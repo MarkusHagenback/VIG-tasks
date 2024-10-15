@@ -57,45 +57,6 @@ data_cleaned$Time <- factor(data_cleaned$Time, levels = unique(data_cleaned$Time
 data_cleaned$VG <- trimws(data_cleaned$VG)
 data_cleaned$Balance_Sheet_Position <- trimws(data_cleaned$Balance_Sheet_Position)
 
-## Making some graphs to understand the data.
-
-# firm_1_data <- data_cleaned %>%
-#   filter(Firm_ID == 1)
-# time_series_graphs <- unique(firm_1_data$Balance_Sheet_Position)
-# 
-# if (!dir.exists("test_graphs")) {
-#   dir.create("test_graphs")
-# }
-# 
-# for (i in seq_along(time_series_graphs)) {
-#   
-#   
-#   plot_in_making_name <- time_series_graphs[i]
-#   print(plot_in_making_name)
-#   
-#   graph_data <- firm_1_data %>%
-#     filter(Balance_Sheet_Position == plot_in_making_name)
-#   
-#   # Create the plot
-#   plot <- ggplot(graph_data, aes(x = Time, y = Value, color = VG, group = VG)) +
-#     geom_line() +   # Line plot
-#     geom_point() +  # Points for each observation
-#     labs(title = paste("Firm:", unique(graph_data$Firm_ID), 
-#                        "- Balance Sheet Position:", plot_in_making_name),
-#          x = "Time", y = "Value", color = "VG") +  # Labels for axes and legend
-#     theme_minimal()  # A clean theme
-#   
-#   # Construct a unique filename using Firm_ID and Balance_Sheet_Position
-#   file_name <- paste0("test_graphs/Firm_", unique(graph_data$Firm_ID), 
-#                       "_Position_", plot_in_making_name, ".png")
-#   
-#   # Save the plot with a unique name
-#   ggsave(filename = file_name, plot = plot, width = 10, height = 6)
-# }
-
-
-##
-
 ####
 
 # Define the names and codes as vectors
@@ -577,7 +538,48 @@ data_cleaned <- data_cleaned %>%
 
 # UI
 ui <- fluidPage(
-  titlePanel("Task 2 Dashboard"),
+  # Adding custom fonts and styling
+  tags$head(
+    tags$link(href = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap", rel = "stylesheet"),
+    tags$style(HTML("
+      body {
+        font-family: 'Roboto', sans-serif;
+      }
+      .title-panel {
+        font-weight: bold;
+        font-size: 24px;
+        color: #333;
+      }
+      .checkbox-label {
+        margin-bottom: 10px;
+        font-size: 14px;
+      }
+      .shiny-bound-output {
+        margin-top: 20px;
+      }
+      .btn-primary {
+        background-color: #007BFF; 
+        border: none;
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+      .nav-tabs > li > a {
+        color: #555;
+        font-weight: bold;
+        font-size: 15px;
+      }
+      .nav-tabs > li.active > a {
+        background-color: #007BFF;
+        color: white;
+      }
+      .nav-tabs > li > a:hover {
+        background-color: #e7e7e7;
+      }
+    "))
+  ),
+  
+  # Title of the app
+  tags$div(class = "title-panel", "Task 2"),
   
   # Wrap tabsetPanel in a div with specified width
   tags$div(style = "width: 2500px; margin: auto;",  # Set the desired width here
@@ -604,6 +606,11 @@ ui <- fluidPage(
                           checkboxGroupInput("vg_filter", "Filter VG:", 
                                              choices = unique(data_cleaned$VG),
                                              selected = unique(data_cleaned$VG)),
+                          
+                          # Add a dividing line between sections
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
+                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Assets"),
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
                           
                           # Checkbox inputs for each option
                           tags$div(class = "checkbox-label", 
@@ -736,7 +743,9 @@ ui <- fluidPage(
                                    tags$input(type = "checkbox", id = "other_assets"), 
                                    tags$label(`for` = "other_assets", "Any other assets, not elsewhere shown (R0420)")),
                           
-
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
+                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Liabilities"),
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
                           ################### Liabilities below
                           # Generate a checkbox for each liability column
                           
@@ -886,6 +895,9 @@ ui <- fluidPage(
                                    tags$label(`for` = "excess_of_assets_over_liabilities", "Excess of assets over liabilities (R1000)")),
            
                           ### Buttons for the ones we dont know what they are:
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
+                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Unknown classes"),
+                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
                           
                           # Define the list of codes
                           tags$div(class = "checkbox-label", 
@@ -1499,13 +1511,28 @@ server <- function(input, output, session) {
         
         # Create the plot using ggplot2
         ggplot(pos_data, aes(x = Time, y = Value, color = VG, group = VG)) +
-          geom_line() +   # Line plot
-          geom_point() +  # Points for each observation
-          labs(title = paste("Firm:", unique(pos_data$Firm_ID), 
-                             ":", name),
-               x = "", y = "Value", color = "VG") +  # Labels for axes and legend
-    scale_y_continuous(labels = comma) +  # Ensure y-axis is numeric and formatted with commas
-          theme_minimal()  # A clean theme
+          geom_line(size = 1.2) +  # Thicker lines for better visibility
+          geom_point(size = 3, shape = 21, fill = "white", stroke = 1) +  # Larger points with a distinct outline
+          labs(
+            title = paste("Firm:", unique(pos_data$Firm_ID), ":", name),
+            x = "",  # Add axis labels for clarity
+            y = "", 
+            color = ""  # Legend title
+          ) +
+          scale_y_continuous(labels = scales::comma) +  # Format y-axis with commas
+          scale_color_brewer(palette = "Set2") +  # Use a visually appealing color palette
+          theme_minimal(base_size = 15) +  # Base theme with larger font sizes
+          theme(
+            plot.title = element_text(face = "bold", size = 18, hjust = 0.5),  # Center and bold the title
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12),  # Rotate x-axis labels
+            axis.text.y = element_text(size = 12),  # Increase size of y-axis labels
+            legend.position = "right",  # Move legend to the right
+            legend.title = element_text(face = "bold"),  # Bold legend title
+            legend.text = element_text(size = 12),  # Larger legend text
+            panel.grid.major = element_line(size = 0.5, color = "grey80"),  # Subtle grid lines
+            panel.grid.minor = element_blank(),  # Remove minor grid lines
+            plot.margin = margin(10, 10, 10, 10)  # Add padding around the plot
+          )
         
       })
     })
