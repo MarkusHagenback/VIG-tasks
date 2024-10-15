@@ -404,7 +404,6 @@ server <- function(input, output, session) {
   output$esrsComparisonChart <- renderPlotly({
     # Filter the data based on user input and group by ESRS full name and Entity Name
     filtered <- filtered_data() %>%
-      filter(!is.na(Consumption)) %>%  # Ensure we only include non-missing Consumption values
       group_by(`ESRS code`, `ESRS full name`, `Entity full name`, `Reporting year`) %>%
       summarise(total_consumption = sum(Consumption, na.rm = TRUE), .groups = 'drop')  # Summarise to get total consumption
     
