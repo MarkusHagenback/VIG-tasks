@@ -1,0 +1,561 @@
+# Task 3
+
+rm(list=ls())
+
+library(shiny)
+library(shinydashboard)
+library(plotly)
+library(dplyr)
+library(leaflet)
+library(readxl)
+library(DT)  # Add DT library for datatable
+library(writexl)  # For writing Excel files
+
+# Read in the data from Excel
+file_path <- "C:/Users/Ma/Desktop/VIG task/003 - Visualization/Dry_Run_Data_anonymised_VIG_ESRS.xlsx"
+data <- read_excel(file_path, sheet = "ALL_V.35.01.01 (by dtp)")  # Adjust sheet name if needed
+
+# Renaming columns
+data <- data %>%
+  rename(
+    `ESRS code` = 3,
+    `ESRS full name` = 4,
+    Entity = 7,
+    `Entity full name` = 8,
+    Consumption = 11,
+    `Involved Entity` = 9,
+    `Reporting year` = 10
+  )
+
+
+# Add 'Entity country' based on the entity full name
+# Add 'Entity country' based on the entity full name
+data <- data %>%
+  mutate(
+    `Entity country` = case_when(
+      `Entity full name` == "BTA Baltic Insurance Company AAS" ~ "Latvia",
+      `Entity full name` == "Compensa Vienna Insurance Group, akcine draudimo bendrove" ~ "Lithuania",
+      `Entity full name` == "Ceská podnikatelská pojist'ovna, a.s., Vienna Insurance Group" ~ "Czechia",
+      `Entity full name` == "DONAU Versicherung AG Vienna Insurance Group" ~ "Austria",
+      `Entity full name` == "InterRisk Towarzystwo Ubezpieczen Spolka Akcyjna Vienna Insurance Group" ~ "Poland",
+      `Entity full name` == "Kooperativa, pojist'ovna, a.s. Vienna Insurance Group" ~ "Czechia",
+      `Entity full name` == "WIENER RE akcionarsko društvo za reosiguranje, Beograd" ~ "Serbia",
+      `Entity full name` == "VIG RE zajist'ovna, a.s." ~ "Czechia",
+      `Entity full name` == "VIENNA INSURANCE GROUP AG Wiener Versicherung Gruppe" ~ "Austria",
+      `Entity full name` == "WIENER STÄDTISCHE Versicherung AG Vienna Insurance Group" ~ "Austria",
+      TRUE ~ NA_character_
+    ),
+    
+    # Add 'Involved Entity country' based on the involved entity full name
+    `Involved Entity country` = case_when(
+      `Involved Entity` == "BTA Baltic Insurance Company AAS" ~ "Latvia",
+      `Involved Entity` == "OÜ LiveOn Paevalille" ~ "Estonia",
+      `Involved Entity` == "Compensa Vienna Insurance Group, akcine draudimo bendrove" ~ "Lithuania",
+      `Involved Entity` == "Ceská podnikatelská pojist'ovna, a.s., Vienna Insurance Group" ~ "Czechia",
+      `Involved Entity` == "DONAU Versicherung AG Vienna Insurance Group" ~ "Austria",
+      `Involved Entity` == "InterRisk Towarzystwo Ubezpieczen Spolka Akcyjna Vienna Insurance Group" ~ "Poland",
+      `Involved Entity` == "Global Expert, s.r.o." ~ "Czechia",
+      `Involved Entity` == "Kooperativa, pojist'ovna, a.s. Vienna Insurance Group" ~ "Czechia",
+      `Involved Entity` == "WIENER RE akcionarsko društvo za reosiguranje, Beograd" ~ "Serbia",
+      `Involved Entity` == "VIG RE zajist'ovna, a.s." ~ "Czechia",
+      `Involved Entity` == "VIENNA INSURANCE GROUP AG Wiener Versicherung Gruppe" ~ "Austria",
+      `Involved Entity` == "DV Immoholding GmbH" ~ "Austria",
+      `Involved Entity` == "WIENER STÄDTISCHE Versicherung AG Vienna Insurance Group" ~ "Austria",
+      `Involved Entity` == "Österreichisches Verkehrsbüro Aktiengesellschaft" ~ "Austria",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Fixing columns corretly
+# Fix Reporting year by extracting year part (remove "012." or similar prefixes)
+data <- data %>%
+  mutate(
+    `ESRS full name` = gsub("\u00A0", " ", `ESRS full name`),  # Replace non-breaking spaces
+    `ESRS full name` = trimws(`ESRS full name`),  # Trim whitespace
+    `Reporting year` = as.numeric(sub(".*\\.", "", `Reporting year`)),
+    Consumption = as.numeric(Consumption)  # Ensure Consumption is numeric
+  )
+
+# Add country coordinates for mapping
+country_coordinates <- data.frame(
+  `Entity country` = c("Latvia", "Lithuania", "Czechia", "Austria", "Poland", "Serbia", "Estonia"),
+  lat = c(56.8796, 54.6872, 49.8175, 47.5162, 51.9194, 44.0165, 58.5953),
+  lon = c(24.6032, 25.2797, 15.4729, 14.5501, 19.1451, 21.0059, 25.0136)
+)
+country_coordinates <- country_coordinates %>%
+  rename(
+    `Entity country` = 1
+  )
+
+# Join data with coordinates
+data <- data %>%
+  left_join(country_coordinates, by = "Entity country") %>%
+  left_join(country_coordinates, by = c("Involved Entity country" = "Entity country"), suffix = c(".entity", ".involved"))
+################################################################################
+
+ui <- dashboardPage(
+  dashboardHeader(title = "ESRS Reporting Dashboard"),
+  dashboardSidebar(
+    sidebarMenu(
+      selectInput("entity", "Select Entities:", 
+                  choices = c("All", unique(data$Entity)), 
+                  selected = "All", 
+                  multiple = TRUE),  # Allow multiple selections
+      uiOutput("involved_entity_ui"),  # Dynamic Involved Entity input
+      sliderInput("year", "Select Reporting Years:", 
+                  min = min(data$`Reporting year`, na.rm = TRUE),  # Ensure NA values are handled
+                  max = max(data$`Reporting year`, na.rm = TRUE), 
+                  value = c(min(data$`Reporting year`, na.rm = TRUE), max(data$`Reporting year`, na.rm = TRUE)),
+                  step = 1),
+      selectInput("esrs_code", "Select ESRS Codes:", 
+                  choices = c("All", unique(data$`ESRS code`)), 
+                  selected = "All"),
+      
+      # New selectInputs for filtering by Entity country and Involved Entity country
+      selectInput("entity_country", "Select Entity Country:",
+                  choices = c("All", unique(data$`Entity country`)),
+                  selected = "All"),
+      selectInput("involved_entity_country", "Select Involved Entity Country:",
+                  choices = c("All", unique(data$`Involved Entity country`)),
+                  selected = "All"),
+      
+      # Numeric Inputs for Consumption Range
+      fluidRow(
+        column(6,
+               numericInput("consumption_min", "Minimum value:", 
+                            value = min(data$Consumption), min = 0, step = 1000)
+        ),
+        column(6,
+               numericInput("consumption_max", "Maximum value:", 
+                            value = max(data$Consumption), min = 1, step = 1000)
+        )
+      ),
+      checkboxInput("filter_zero", "Remove zero values", value = FALSE),  # Checkbox for zero values
+      menuItem("Data Overview", tabName = "overview", icon = icon("table")),
+      menuItem("Visualizations", tabName = "visuals", icon = icon("chart-bar"))
+    )
+  ),
+  dashboardBody(
+    tags$head(
+      tags$style(HTML("
+        .btn-download {
+          background-color: #28a745; /* Green background */
+          color: white; /* White text */
+          padding: 10px 20px; /* Padding */
+          font-size: 16px; /* Font size */
+          border: none; /* No border */
+          border-radius: 5px; /* Rounded corners */
+          cursor: pointer; /* Pointer cursor on hover */
+          transition: background-color 0.3s ease; /* Smooth transition */
+        }
+        .btn-download:hover {
+          background-color: #218838; /* Darker green on hover */
+        }
+      "))
+    ),
+    tabItems(
+      tabItem(tabName = "overview",
+              fluidRow(
+                box(title = NULL, width = 8,
+                    valueBoxOutput("totalConsumption"),
+                    valueBoxOutput("entityCount"),
+                    valueBoxOutput("CountryCount"),
+                    valueBoxOutput("CountryInvolvedCount"),
+                    valueBoxOutput("ESRSCount")
+                ),
+                box(title = NULL, width = 12,
+                    DTOutput("dataTable")),  # Use DTOutput instead of dataTableOutput
+                downloadButton("downloadData", "Download Data")
+              )),
+      tabItem(tabName = "visuals",
+              fluidRow(
+                box(title = "Consumption Overview", width = 8,
+                    plotlyOutput("esrsConsumptionChart")),
+                box(title = "Geographic Distribution of Entities", width = 4,
+                    leafletOutput("entityMap"))
+              )
+      )
+    )
+  )
+)
+
+################################################################################
+server <- function(input, output, session) {
+  
+  # Reactive UI for Involved Entity Selection
+  output$involved_entity_ui <- renderUI({
+    selectInput("involved_entity", "Select Involved Entities:",
+                choices = c("All", unique(data$`Involved Entity`)),
+                selected = "All",
+                multiple = TRUE)
+  })
+  
+  # Filter the data based on user input
+  filtered_data <- reactive({
+    data_filtered <- data
+    
+    # If "All" is selected for Entity, do not filter on Entity
+    if (!("All" %in% input$entity)) {
+      data_filtered <- data_filtered[data_filtered$Entity %in% input$entity, ]
+    }
+    
+    # Check if "All" is in involved entities
+    if (!("All" %in% input$involved_entity) && length(input$involved_entity) > 0) {
+      # Filter data if specific involved entities are selected
+      data_filtered <- data_filtered[data_filtered$`Involved Entity` %in% input$involved_entity, ]
+    }
+    
+    # Apply country filters
+    if (input$entity_country != "All") {
+      data_filtered <- data_filtered[data_filtered$`Entity country` == input$entity_country, ]
+    }
+    
+    if (input$involved_entity_country != "All") {
+      data_filtered <- data_filtered[data_filtered$`Involved Entity country` == input$involved_entity_country, ]
+    }
+    
+    # Apply year filtering
+    data_filtered <- data_filtered[data_filtered$`Reporting year` >= input$year[1] & 
+                                     data_filtered$`Reporting year` <= input$year[2], ]
+    
+    # Filter by ESRS Code
+    if (input$esrs_code != "All") {
+      data_filtered <- data_filtered[data_filtered$`ESRS code` == input$esrs_code, ]
+    }
+    
+    # Apply consumption filtering using numeric inputs
+    data_filtered <- data_filtered[data_filtered$Consumption >= input$consumption_min &
+                                     data_filtered$Consumption <= input$consumption_max, ]
+    
+    # Filter out zero consumption if checkbox is selected
+    if (input$filter_zero) {
+      data_filtered <- data_filtered[data_filtered$Consumption > 0, ]
+    }
+    
+    return(data_filtered)
+  })
+  
+  # Render DataTable
+  output$dataTable <- renderDT({
+    datatable(filtered_data(), options = list(pageLength = 10))
+  })
+  
+  # Download filtered data
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste("filtered_data-", Sys.Date(), ".xlsx", sep="")
+    },
+    content = function(file) {
+      write_xlsx(filtered_data(), file)
+    }
+  )
+  
+  # Plot for ESRS Consumption Chart
+  output$esrsConsumptionChart <- renderPlotly({
+    filtered <- filtered_data() %>%
+      group_by(`ESRS full name`) %>%
+      summarise(total_consumption = sum(Consumption, na.rm = TRUE))
+    
+    plot_ly(
+      filtered,
+      x = ~`ESRS full name`,
+      y = ~total_consumption,
+      type = "bar"
+    ) %>%
+      layout(title = "Total Consumption by ESRS Code",
+             xaxis = list(title = "ESRS Code"),
+             yaxis = list(title = "Total Consumption"))
+  })
+  
+  # Render Leaflet Map
+  output$entityMap <- renderLeaflet({
+    filtered <- filtered_data() %>%
+      group_by(`Entity country`) %>%
+      summarise(total_consumption = sum(Consumption, na.rm = TRUE)) %>%
+      left_join(country_coordinates, by = "Entity country")
+    
+    leaflet(filtered) %>%
+      addTiles() %>%
+      addCircleMarkers(~lon, ~lat, weight = 1,
+                       radius = ~sqrt(total_consumption) / 100,
+                       popup = ~paste(`Entity country`, ": ", total_consumption, " MWh"))
+  })
+  
+  # ValueBox Outputs for Summary Info
+  output$totalConsumption <- renderValueBox({
+    total <- sum(filtered_data()$Consumption, na.rm = TRUE)
+    valueBox(
+      paste(round(total / 1e6, 2), "MWh"), "Total Consumption",
+      icon = icon("bolt"),
+      color = "yellow"
+    )
+  })
+  
+  output$entityCount <- renderValueBox({
+    count <- n_distinct(filtered_data()$Entity)
+    valueBox(
+      count, "Number of Entities",
+      icon = icon("building"),
+      color = "blue"
+    )
+  })
+  
+  output$CountryCount <- renderValueBox({
+    count <- n_distinct(filtered_data()$`Entity country`)
+    valueBox(
+      count, "Countries Represented (Entities)",
+      icon = icon("globe"),
+      color = "green"
+    )
+  })
+  
+  output$CountryInvolvedCount <- renderValueBox({
+    count <- n_distinct(filtered_data()$`Involved Entity country`)
+    valueBox(
+      count, "Countries Represented (Involved Entities)",
+      icon = icon("globe"),
+      color = "green"
+    )
+  })
+  
+  output$ESRSCount <- renderValueBox({
+    count <- n_distinct(filtered_data()$`ESRS code`)
+    valueBox(
+      count, "Number of ESRS Codes",
+      icon = icon("list"),
+      color = "purple"
+    )
+  })
+}
+
+################################################################################
+# Run the application 
+shinyApp(ui = ui, server = server)
+
+
+################################################################################
+# ui <- dashboardPage(
+#   dashboardHeader(title = "ESRS Reporting Dashboard"),
+#   dashboardSidebar(
+#     sidebarMenu(
+#       selectInput("entity", "Select Entities:", 
+#                   choices = c("All", unique(data$Entity)), 
+#                   selected = "All", 
+#                   multiple = TRUE),  # Allow multiple selections
+#       uiOutput("involved_entity_ui"),  # Dynamic Involved Entity input
+#       sliderInput("year", "Select Reporting Years:", 
+#                   min = min(data$`Reporting year`, na.rm = TRUE),  # Ensure NA values are handled
+#                   max = max(data$`Reporting year`, na.rm = TRUE), 
+#                   value = c(min(data$`Reporting year`, na.rm = TRUE), max(data$`Reporting year`, na.rm = TRUE)),
+#                   step = 1),
+#       selectInput("esrs_code", "Select ESRS Codes:", 
+#                   choices = c("All", unique(data$`ESRS code`)), 
+#                   selected = "All"),
+#       # Numeric Inputs for Consumption Range
+#       fluidRow(
+#         column(6,
+#                numericInput("consumption_min", "Minimum value:", 
+#                             value = min(data$Consumption), min = 0, step = 1000)
+#         ),
+#         column(6,
+#                numericInput("consumption_max", "Maximum value:", 
+#                             value = max(data$Consumption), min = 1, step = 1000)
+#         )
+#       ),
+#       checkboxInput("filter_zero", "Remove zero values", value = FALSE),  # Checkbox for zero values
+#       menuItem("Data Overview", tabName = "overview", icon = icon("table")),
+#       menuItem("Visualizations", tabName = "visuals", icon = icon("chart-bar"))
+#     )
+#   ),
+#   dashboardBody(
+#     tags$head(
+#       tags$style(HTML("
+#         .btn-download {
+#           background-color: #28a745; /* Green background */
+#           color: white; /* White text */
+#           padding: 10px 20px; /* Padding */
+#           font-size: 16px; /* Font size */
+#           border: none; /* No border */
+#           border-radius: 5px; /* Rounded corners */
+#           cursor: pointer; /* Pointer cursor on hover */
+#           transition: background-color 0.3s ease; /* Smooth transition */
+#         }
+#         .btn-download:hover {
+#           background-color: #218838; /* Darker green on hover */
+#         }
+#       "))
+#     ),
+#     tabItems(
+#       tabItem(tabName = "overview",
+#               fluidRow(
+#                 box(title = NULL, width = 8,
+#                     valueBoxOutput("totalConsumption"),
+#                     valueBoxOutput("entityCount"),
+#                     valueBoxOutput("CountryCount"),
+#                     valueBoxOutput("CountryInvolvedCount"),
+#                     valueBoxOutput("ESRSCount")
+#                 ),
+#                 box(title = NULL, width = 12,
+#                     DTOutput("dataTable")),  # Use DTOutput instead of dataTableOutput
+#                 downloadButton("downloadData", "Download Data")
+#                 #actionButton("downloadData", "Download Data", class = "btn-download")  
+#               )),
+#       tabItem(tabName = "visuals",
+#               fluidRow(
+#                 box(title = "Consumption Overview", width = 8,
+#                     plotlyOutput("esrsConsumptionChart")),
+#                 box(title = "Geographic Distribution of Entities", width = 4,
+#                     leafletOutput("mapPlot"))
+#               ))
+#     )
+#   )
+# )
+# 
+# server <- function(input, output, session) {
+#   
+#   # Dynamic Involved Entity UI based on selected Entity
+#   output$involved_entity_ui <- renderUI({
+#     req(input$entity)  # Ensure entity input is available
+#     
+#     if ("All" %in% input$entity) {
+#       # If "All" is selected, get unique involved entities from the entire dataset
+#       involved_entities <- unique(data$`Involved Entity`)
+#     } else {
+#       # Filter involved entities based on the selected entities
+#       involved_entities <- unique(data$`Involved Entity`[data$Entity %in% input$entity])
+#     }
+#     
+#     # Add "All" option to Involved Entities
+#     involved_entities <- c("All", involved_entities)
+#     
+#     # Create the selectInput for involved entities
+#     selectInput("involved_entity", "Select Involved Entities:", 
+#                 choices = involved_entities, 
+#                 selected = "All", 
+#                 multiple = TRUE)
+#   })
+#   
+#   # Reactive filtered data based on user selections
+#   filtered_data <- reactive({
+#     data_filtered <- data
+#     
+#     # If "All" is selected for Entity, do not filter on Entity
+#     if (!("All" %in% input$entity)) {
+#       data_filtered <- data_filtered[data_filtered$Entity %in% input$entity, ]
+#     }
+#     
+#     # Check if "All" is in involved entities
+#     if (!("All" %in% input$involved_entity) && length(input$involved_entity) > 0) {
+#       # Filter data if specific involved entities are selected
+#       data_filtered <- data_filtered[data_filtered$`Involved Entity` %in% input$involved_entity, ]
+#     }
+#     
+#     # Apply year filtering
+#     data_filtered <- data_filtered[data_filtered$`Reporting year` >= input$year[1] & 
+#                                      data_filtered$`Reporting year` <= input$year[2], ]
+#     
+#     # Filter by ESRS Code
+#     if (input$esrs_code != "All") {
+#       data_filtered <- data_filtered[data_filtered$`ESRS code` == input$esrs_code, ]
+#     }
+#     
+#     # Apply consumption filtering using numeric inputs
+#     data_filtered <- data_filtered[data_filtered$Consumption >= input$consumption_min &
+#                                      data_filtered$Consumption <= input$consumption_max, ]
+#     
+#     # Filter out zero consumption if checkbox is selected
+#     if (input$filter_zero) {
+#       data_filtered <- data_filtered[data_filtered$Consumption > 0, ]
+#     }
+#     
+#     print(data_filtered)  # Check the filtered data
+#     return(data_filtered)
+#   })
+#   
+#   # Outputs for value boxes
+#   output$totalConsumption <- renderValueBox({
+#     total_consumption <- sum(filtered_data()$Consumption, na.rm = TRUE)
+#     valueBox(value = format(total_consumption, big.mark = ","), 
+#              subtitle = "Total Consumption", 
+#              icon = icon("chart-line"), color = "green")
+#   })
+#   
+#   output$entityCount <- renderValueBox({
+#     entity_count <- length(unique(filtered_data()$Entity))
+#     valueBox(value = entity_count, 
+#              subtitle = "Unique Entities", 
+#              icon = icon("users"), color = "blue")
+#   })
+#   
+#   output$CountryCount <- renderValueBox({
+#     country_count <- length(unique(filtered_data()$`Entity country`))
+#     valueBox(value = country_count, 
+#              subtitle = "Unique Countries", 
+#              icon = icon("flag"), color = "yellow")
+#   })
+#   
+#   output$CountryInvolvedCount <- renderValueBox({
+#     country_involved_count <- length(unique(filtered_data()$`Involved Entity country`))
+#     valueBox(value = country_involved_count, 
+#              subtitle = "Involved Countries", 
+#              icon = icon("users"), color = "red")
+#   })
+#   
+#   output$ESRSCount <- renderValueBox({
+#     esrs_count <- length(unique(filtered_data()$`ESRS code`))
+#     valueBox(value = esrs_count, 
+#              subtitle = "Unique ESRS Codes", 
+#              icon = icon("file-code"), color = "orange")
+#   })
+#   
+#   output$dataTable <- renderDT({
+#     req(filtered_data())  # Ensure filtered_data is available
+#     datatable(
+#       filtered_data() %>%
+#         select(Entity, `Entity full name`, `Entity country`, `Involved Entity`, `Involved Entity country`, `Reporting year`, `ESRS code`, `ESRS full name`, Consumption),
+#       options = list(pageLength = 10, scrollX = TRUE),
+#       rownames = FALSE
+#     ) %>%
+#       formatRound(columns = "Consumption", digits = 4)  # Format Consumption column for display
+#   })
+#   
+#   # Download handler
+#   output$downloadData <- downloadHandler(
+#     filename = function() {
+#       paste("Filtered_Data_", Sys.Date(), ".xlsx", sep = "")
+#     },
+#     content = function(file) {
+#       data_to_download <- filtered_data()
+#       req(nrow(data_to_download) > 0)  # Ensure data is available
+#       write_xlsx(data_to_download, file)  # Create the Excel file
+#     }
+#   )
+#   
+#   # Plot output for Consumption Overview
+#   output$esrsConsumptionChart <- renderPlotly({
+#     plot_data <- filtered_data() %>%
+#       group_by(`ESRS code`) %>%
+#       summarise(total_consumption = sum(Consumption, na.rm = TRUE), .groups = 'drop')
+#     
+#     plot_ly(data = plot_data, x = ~`ESRS code`, y = ~total_consumption, type = 'bar') %>%
+#       layout(title = "Consumption by ESRS Code", xaxis = list(title = "ESRS Code"), yaxis = list(title = "Total Consumption"))
+#   })
+#   
+#   
+#   # Map output
+#   output$mapPlot <- renderLeaflet({
+#     filtered_data_map <- filtered_data() %>%
+#       select(Entity, `Entity country`, lon.entity, lat.entity, `Involved Entity`, `Involved Entity country`, lon.involved, lat.involved)
+#     
+#     leaflet() %>%
+#       addTiles() %>%
+#       addCircleMarkers(data = filtered_data_map, 
+#                        ~lon.entity, ~lat.entity, radius = 5, color = "blue", 
+#                        label = ~Entity, clusterOptions = markerClusterOptions()) %>%
+#       addCircleMarkers(data = filtered_data_map, 
+#                        ~lon.involved, ~lat.involved, radius = 5, color = "red", 
+#                        label = ~`Involved Entity`, clusterOptions = markerClusterOptions())
+#   })
+# }
+# 
+# shinyApp(ui, server)
