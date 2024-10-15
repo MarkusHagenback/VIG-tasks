@@ -8,12 +8,21 @@ library(plotly)
 library(dplyr)
 library(leaflet)
 library(readxl)
-library(DT)  # Add DT library for datatable
-library(writexl)  # For writing Excel files
+library(DT)  
+library(writexl)  
+library(rsconnect)
 
-# Read in the data from Excel
-file_path <- "C:/Users/Ma/Desktop/VIG task/003 - Visualization/Dry_Run_Data_anonymised_VIG_ESRS.xlsx"
-data <- read_excel(file_path, sheet = "ALL_V.35.01.01 (by dtp)")  # Adjust sheet name if needed
+# Define the URL to the raw Excel file on GitHub
+file_url <- "https://raw.githubusercontent.com/MarkusHagenback/VIG-tasks/main/003%20-%20Visualization/Dry_Run_Data_anonymised_VIG_ESRS.xlsx"
+
+# Define a temporary file path to save the downloaded Excel file
+temp_file <- tempfile(fileext = ".xlsx")
+
+# Download the Excel file from GitHub to the temporary file
+download.file(file_url, temp_file, mode = "wb")
+
+# Read the downloaded Excel file
+data <- read_excel(temp_file, sheet = "ALL_V.35.01.01 (by dtp)")  # Adjust the sheet name if needed
 
 # Renaming columns
 data <- data %>%

@@ -8,16 +8,14 @@ library(lubridate)
 library(shiny)
 library(shinyWidgets)
 library(DT)
-library(scales)  # For comma formatting
-# Load necessary libraries
-
+library(scales)  
+library(rsconnect)
 
 rm(list=ls())
 
-
 # Read in the data from Excel
-file_path <- "C:/Users/Ma/Desktop/VIG task/002 - Time Series/S0201_ts_dummy.csv"
-data <- read.csv(file_path)
+file_url <- "https://raw.githubusercontent.com/MarkusHagenback/VIG-tasks/refs/heads/main/002%20-%20Time%20Series/S0201_ts_dummy.csv"
+data <- read.csv(file_url)
 
 # Assuming you've already loaded the dataset as 'data'
 data_cleaned <- data %>%
