@@ -1,5 +1,4 @@
-# Task 3
-
+# Task 3 - Designing a Dashboard
 rm(list=ls())
 
 library(shiny)
@@ -36,9 +35,7 @@ data <- data %>%
     `Reporting year` = 10
   )
 
-
-# Add 'Entity country' based on the entity full name
-# Add 'Entity country' based on the entity full name
+  # Add 'Entity country' based on the entity full name
 data <- data %>%
   mutate(
     `Entity country` = case_when(
@@ -108,7 +105,7 @@ ui <- dashboardPage(
     sidebarMenu(
       selectInput("entity", "Select Entities:", 
                   choices = c("All", unique(data$Entity)), 
-                  selected = "All", 
+                  selected = NULL, 
                   multiple = TRUE),  # Allow multiple selections
       uiOutput("involved_entity_ui"),  # Dynamic Involved Entity input
       sliderInput("year", "Select Reporting Years:", 
@@ -121,12 +118,18 @@ ui <- dashboardPage(
                   selected = "All"),
       
       # New selectInputs for filtering by Entity country and Involved Entity country
-      selectInput("entity_country", "Select Entity Country:",
-                  choices = c("All", unique(data$`Entity country`)),
-                  selected = "All"),
-      selectInput("involved_entity_country", "Select Involved Entity Country:",
-                  choices = c("All", unique(data$`Involved Entity country`)),
-                  selected = "All"),
+      
+      uiOutput("entity_country_ui"),  # Dynamic Involved Entity input
+      
+      # selectInput("entity_country", "Select Entity Country:",
+      #             choices = c("All", unique(data$`Entity country`)),
+      #             selected = "All"),
+      
+      uiOutput("involved_entity_country_ui"),  # Dynamic Involved Entity input
+      
+      # selectInput("involved_entity_country", "Select Involved Entity Country:",
+      #             choices = c("All", unique(data$`Involved Entity country`)),
+      #             selected = "All"),
       
       # Numeric Inputs for Consumption Range
       fluidRow(
@@ -191,13 +194,116 @@ ui <- dashboardPage(
 ################################################################################
 server <- function(input, output, session) {
   
-  # Reactive UI for Involved Entity Selection
+  # # Reactive UI for Involved Entity Selection based on selected Entity
+  # output$involved_entity_ui <- renderUI({
+  #   involved_entities <- if ("All" %in% input$entity) {
+  #     unique(data$`Involved Entity`)
+  #   } else {
+  #     # Filter to show only involved entities related to selected entities
+  #     filtered_entities <- data %>%
+  #       filter(Entity %in% input$entity) %>%
+  #       pull(`Involved Entity`) %>%
+  #       unique()
+  #     # Combine with "All" option
+  #     c("All", filtered_entities)
+  #   }
+  #   
+  #   selectInput("involved_entity", "Select Involved Entities:",
+  #               choices = involved_entities,
+  #               selected = "All",
+  #               multiple = TRUE)
+  # })
+  # 
+  # 
+  # # Reactive UI for Involved Entity Selection based on selected Entity
+  # output$entity_country_ui <- renderUI({
+  #   entity_countries <- if ("All" %in% input$entity) {
+  #     unique(data$`Entity country`)
+  #     
+  #   } else {
+  #     # Filter to show only countries related to selected entities
+  #     filtered_countries <- filtered_entities %>%
+  #       filter(Entity %in% input$entity) %>%
+  #       pull(`Entity country`) %>%
+  #       unique()
+  #     # Combine with "All" option
+  #     c("All", filtered_countries)
+  #   }
+  #   
+  #   selectInput("entity_country", "Select Entity Country:",
+  #               choices = entity_countries,
+  #               selected = "All")
+  # }) 
+  
+  # Reactive expression for filtered involved entities based on selected entity
+  filtered_involved_entities <- reactive({
+    if ("All" %in% input$entity) {
+      unique(data$`Involved Entity`)
+    } else {
+      data %>%
+        filter(Entity %in% input$entity) %>%
+        pull(`Involved Entity`) %>%
+        unique()
+    }
+  })
+  
+  # Reactive UI for Involved Entity Selection based on selected Entity
   output$involved_entity_ui <- renderUI({
+    involved_entities <- filtered_involved_entities()
+    # Combine with "All" option
     selectInput("involved_entity", "Select Involved Entities:",
-                choices = c("All", unique(data$`Involved Entity`)),
-                selected = "All",
+                choices = c(involved_entities),
+                selected = NULL,
                 multiple = TRUE)
   })
+  
+  # Reactive UI for Entity Country Selection based on selected Entity
+  output$entity_country_ui <- renderUI({
+    entity_countries <- if ("All" %in% input$entity) {
+      unique(data$`Entity country`)
+    } else {
+      # Filter to show countries related to the selected entities
+      filtered_countries <- data %>%
+        filter(Entity %in% input$entity) %>%
+        pull(`Entity country`) %>%
+        unique()
+      # Combine with "All" option
+      c("All", filtered_countries)
+    }
+
+    selectInput("entity_country", "Select Entity Country:",
+                choices = entity_countries,
+                selected = "All")
+  })
+  
+  ####
+  
+  # Reactive UI for Involved Entity Country Selection based on selected Involved Entities
+  output$involved_entity_country_ui <- renderUI({
+    involved_entities <- input$involved_entity
+    
+    if (is.null(involved_entities) || length(involved_entities) == 0) {
+      involved_entities <- c("All")  # Default to "All" if nothing selected
+    }
+    
+    involved_countries <- if ("All" %in% involved_entities) {
+      unique(data$`Involved Entity country`)
+    } else {
+      # Filter countries related to selected involved entities and the current entities
+      filtered_countries <- data %>%
+        filter(`Involved Entity` %in% involved_entities & Entity %in% input$entity) %>%
+        pull(`Involved Entity country`) %>%
+        unique()
+      # Combine with "All" option
+      c("All", filtered_countries)
+    }
+    
+    selectInput("involved_entity_country", "Select Involved Entity Country:",
+                choices = involved_countries,
+                selected = "All")
+  })
+  
+  ################################
   
   # Filter the data based on user input
   filtered_data <- reactive({
@@ -246,7 +352,19 @@ server <- function(input, output, session) {
   
   # Render DataTable
   output$dataTable <- renderDT({
-    datatable(filtered_data(), options = list(pageLength = 10))
+    # Specify the desired columns
+    desired_columns <- c("ESRS code", "ESRS full name", 
+                         "Entity", "Entity full name", 
+                         "Reporting year", "Consumption", 
+                         "Entity country", "Involved Entity", 
+                         "Involved Entity country")
+    
+    # Filter the data to only include the desired columns
+    filtered_data_subset <- filtered_data()[, desired_columns, drop = FALSE]
+    
+    # Render the DataTable with the filtered data
+    datatable(filtered_data_subset, options = list(pageLength = 10)) %>%
+      formatRound(columns = "Consumption", digits = 3)  # Format the Consumption column
   })
   
   # Download filtered data
@@ -276,18 +394,54 @@ server <- function(input, output, session) {
              yaxis = list(title = "Total Consumption"))
   })
   
+  
   # Render Leaflet Map
   output$entityMap <- renderLeaflet({
+    # Group data by entity country and calculate total consumption
     filtered <- filtered_data() %>%
       group_by(`Entity country`) %>%
       summarise(total_consumption = sum(Consumption, na.rm = TRUE)) %>%
       left_join(country_coordinates, by = "Entity country")
     
-    leaflet(filtered) %>%
-      addTiles() %>%
-      addCircleMarkers(~lon, ~lat, weight = 1,
-                       radius = ~sqrt(total_consumption) / 100,
-                       popup = ~paste(`Entity country`, ": ", total_consumption, " MWh"))
+    # If involved entities are in a different data frame, prepare it
+    involved_entities <- filtered_data() %>%
+      filter(!is.na(`Involved Entity`)) %>%
+      group_by(`Involved Entity country`) %>%
+      summarise(total_involved_consumption = sum(Consumption, na.rm = TRUE)) %>%
+      left_join(country_coordinates, by = c("Involved Entity country" = "Entity country"))
+    
+    # Create the leaflet map
+    leaflet() %>%
+      addTiles(urlTemplate = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png") %>%  # Default tiles
+      addProviderTiles("CartoDB.Positron") %>%  # Gray tile layer
+      
+      # Add markers for main entities
+      addCircleMarkers(
+        data = filtered,
+        lng = ~lon, 
+        lat = ~lat, 
+        weight = 1,
+        radius = ~sqrt(total_consumption) / 500,  # Scale size based on total consumption
+        color = "blue",  # Main entity color
+        stroke = TRUE,
+        fillOpacity = 0.7,  # Set opacity for better visibility
+        popup = ~paste0("<strong>Country:</strong> ", `Entity country`, 
+                        "<br><strong>Total Consumption:</strong> ", total_consumption, " MWh")
+      ) %>%
+      
+      # Add markers for involved entities
+      addCircleMarkers(
+        data = involved_entities,
+        lng = ~lon, 
+        lat = ~lat, 
+        weight = 1,
+        radius = ~sqrt(total_involved_consumption) / 500,  # Scale size based on involved consumption
+        color = "red",  # Involved entity color
+        stroke = TRUE,
+        fillOpacity = 0.7,  # Set opacity for better visibility
+        popup = ~paste0("<strong>Involved Entity Country:</strong> ", `Involved Entity country`, 
+                        "<br><strong>Total Involved Consumption:</strong> ", total_involved_consumption, " MWh")
+      )
   })
   
   # ValueBox Outputs for Summary Info
@@ -340,231 +494,3 @@ server <- function(input, output, session) {
 ################################################################################
 # Run the application 
 shinyApp(ui = ui, server = server)
-
-
-################################################################################
-# ui <- dashboardPage(
-#   dashboardHeader(title = "ESRS Reporting Dashboard"),
-#   dashboardSidebar(
-#     sidebarMenu(
-#       selectInput("entity", "Select Entities:", 
-#                   choices = c("All", unique(data$Entity)), 
-#                   selected = "All", 
-#                   multiple = TRUE),  # Allow multiple selections
-#       uiOutput("involved_entity_ui"),  # Dynamic Involved Entity input
-#       sliderInput("year", "Select Reporting Years:", 
-#                   min = min(data$`Reporting year`, na.rm = TRUE),  # Ensure NA values are handled
-#                   max = max(data$`Reporting year`, na.rm = TRUE), 
-#                   value = c(min(data$`Reporting year`, na.rm = TRUE), max(data$`Reporting year`, na.rm = TRUE)),
-#                   step = 1),
-#       selectInput("esrs_code", "Select ESRS Codes:", 
-#                   choices = c("All", unique(data$`ESRS code`)), 
-#                   selected = "All"),
-#       # Numeric Inputs for Consumption Range
-#       fluidRow(
-#         column(6,
-#                numericInput("consumption_min", "Minimum value:", 
-#                             value = min(data$Consumption), min = 0, step = 1000)
-#         ),
-#         column(6,
-#                numericInput("consumption_max", "Maximum value:", 
-#                             value = max(data$Consumption), min = 1, step = 1000)
-#         )
-#       ),
-#       checkboxInput("filter_zero", "Remove zero values", value = FALSE),  # Checkbox for zero values
-#       menuItem("Data Overview", tabName = "overview", icon = icon("table")),
-#       menuItem("Visualizations", tabName = "visuals", icon = icon("chart-bar"))
-#     )
-#   ),
-#   dashboardBody(
-#     tags$head(
-#       tags$style(HTML("
-#         .btn-download {
-#           background-color: #28a745; /* Green background */
-#           color: white; /* White text */
-#           padding: 10px 20px; /* Padding */
-#           font-size: 16px; /* Font size */
-#           border: none; /* No border */
-#           border-radius: 5px; /* Rounded corners */
-#           cursor: pointer; /* Pointer cursor on hover */
-#           transition: background-color 0.3s ease; /* Smooth transition */
-#         }
-#         .btn-download:hover {
-#           background-color: #218838; /* Darker green on hover */
-#         }
-#       "))
-#     ),
-#     tabItems(
-#       tabItem(tabName = "overview",
-#               fluidRow(
-#                 box(title = NULL, width = 8,
-#                     valueBoxOutput("totalConsumption"),
-#                     valueBoxOutput("entityCount"),
-#                     valueBoxOutput("CountryCount"),
-#                     valueBoxOutput("CountryInvolvedCount"),
-#                     valueBoxOutput("ESRSCount")
-#                 ),
-#                 box(title = NULL, width = 12,
-#                     DTOutput("dataTable")),  # Use DTOutput instead of dataTableOutput
-#                 downloadButton("downloadData", "Download Data")
-#                 #actionButton("downloadData", "Download Data", class = "btn-download")  
-#               )),
-#       tabItem(tabName = "visuals",
-#               fluidRow(
-#                 box(title = "Consumption Overview", width = 8,
-#                     plotlyOutput("esrsConsumptionChart")),
-#                 box(title = "Geographic Distribution of Entities", width = 4,
-#                     leafletOutput("mapPlot"))
-#               ))
-#     )
-#   )
-# )
-# 
-# server <- function(input, output, session) {
-#   
-#   # Dynamic Involved Entity UI based on selected Entity
-#   output$involved_entity_ui <- renderUI({
-#     req(input$entity)  # Ensure entity input is available
-#     
-#     if ("All" %in% input$entity) {
-#       # If "All" is selected, get unique involved entities from the entire dataset
-#       involved_entities <- unique(data$`Involved Entity`)
-#     } else {
-#       # Filter involved entities based on the selected entities
-#       involved_entities <- unique(data$`Involved Entity`[data$Entity %in% input$entity])
-#     }
-#     
-#     # Add "All" option to Involved Entities
-#     involved_entities <- c("All", involved_entities)
-#     
-#     # Create the selectInput for involved entities
-#     selectInput("involved_entity", "Select Involved Entities:", 
-#                 choices = involved_entities, 
-#                 selected = "All", 
-#                 multiple = TRUE)
-#   })
-#   
-#   # Reactive filtered data based on user selections
-#   filtered_data <- reactive({
-#     data_filtered <- data
-#     
-#     # If "All" is selected for Entity, do not filter on Entity
-#     if (!("All" %in% input$entity)) {
-#       data_filtered <- data_filtered[data_filtered$Entity %in% input$entity, ]
-#     }
-#     
-#     # Check if "All" is in involved entities
-#     if (!("All" %in% input$involved_entity) && length(input$involved_entity) > 0) {
-#       # Filter data if specific involved entities are selected
-#       data_filtered <- data_filtered[data_filtered$`Involved Entity` %in% input$involved_entity, ]
-#     }
-#     
-#     # Apply year filtering
-#     data_filtered <- data_filtered[data_filtered$`Reporting year` >= input$year[1] & 
-#                                      data_filtered$`Reporting year` <= input$year[2], ]
-#     
-#     # Filter by ESRS Code
-#     if (input$esrs_code != "All") {
-#       data_filtered <- data_filtered[data_filtered$`ESRS code` == input$esrs_code, ]
-#     }
-#     
-#     # Apply consumption filtering using numeric inputs
-#     data_filtered <- data_filtered[data_filtered$Consumption >= input$consumption_min &
-#                                      data_filtered$Consumption <= input$consumption_max, ]
-#     
-#     # Filter out zero consumption if checkbox is selected
-#     if (input$filter_zero) {
-#       data_filtered <- data_filtered[data_filtered$Consumption > 0, ]
-#     }
-#     
-#     print(data_filtered)  # Check the filtered data
-#     return(data_filtered)
-#   })
-#   
-#   # Outputs for value boxes
-#   output$totalConsumption <- renderValueBox({
-#     total_consumption <- sum(filtered_data()$Consumption, na.rm = TRUE)
-#     valueBox(value = format(total_consumption, big.mark = ","), 
-#              subtitle = "Total Consumption", 
-#              icon = icon("chart-line"), color = "green")
-#   })
-#   
-#   output$entityCount <- renderValueBox({
-#     entity_count <- length(unique(filtered_data()$Entity))
-#     valueBox(value = entity_count, 
-#              subtitle = "Unique Entities", 
-#              icon = icon("users"), color = "blue")
-#   })
-#   
-#   output$CountryCount <- renderValueBox({
-#     country_count <- length(unique(filtered_data()$`Entity country`))
-#     valueBox(value = country_count, 
-#              subtitle = "Unique Countries", 
-#              icon = icon("flag"), color = "yellow")
-#   })
-#   
-#   output$CountryInvolvedCount <- renderValueBox({
-#     country_involved_count <- length(unique(filtered_data()$`Involved Entity country`))
-#     valueBox(value = country_involved_count, 
-#              subtitle = "Involved Countries", 
-#              icon = icon("users"), color = "red")
-#   })
-#   
-#   output$ESRSCount <- renderValueBox({
-#     esrs_count <- length(unique(filtered_data()$`ESRS code`))
-#     valueBox(value = esrs_count, 
-#              subtitle = "Unique ESRS Codes", 
-#              icon = icon("file-code"), color = "orange")
-#   })
-#   
-#   output$dataTable <- renderDT({
-#     req(filtered_data())  # Ensure filtered_data is available
-#     datatable(
-#       filtered_data() %>%
-#         select(Entity, `Entity full name`, `Entity country`, `Involved Entity`, `Involved Entity country`, `Reporting year`, `ESRS code`, `ESRS full name`, Consumption),
-#       options = list(pageLength = 10, scrollX = TRUE),
-#       rownames = FALSE
-#     ) %>%
-#       formatRound(columns = "Consumption", digits = 4)  # Format Consumption column for display
-#   })
-#   
-#   # Download handler
-#   output$downloadData <- downloadHandler(
-#     filename = function() {
-#       paste("Filtered_Data_", Sys.Date(), ".xlsx", sep = "")
-#     },
-#     content = function(file) {
-#       data_to_download <- filtered_data()
-#       req(nrow(data_to_download) > 0)  # Ensure data is available
-#       write_xlsx(data_to_download, file)  # Create the Excel file
-#     }
-#   )
-#   
-#   # Plot output for Consumption Overview
-#   output$esrsConsumptionChart <- renderPlotly({
-#     plot_data <- filtered_data() %>%
-#       group_by(`ESRS code`) %>%
-#       summarise(total_consumption = sum(Consumption, na.rm = TRUE), .groups = 'drop')
-#     
-#     plot_ly(data = plot_data, x = ~`ESRS code`, y = ~total_consumption, type = 'bar') %>%
-#       layout(title = "Consumption by ESRS Code", xaxis = list(title = "ESRS Code"), yaxis = list(title = "Total Consumption"))
-#   })
-#   
-#   
-#   # Map output
-#   output$mapPlot <- renderLeaflet({
-#     filtered_data_map <- filtered_data() %>%
-#       select(Entity, `Entity country`, lon.entity, lat.entity, `Involved Entity`, `Involved Entity country`, lon.involved, lat.involved)
-#     
-#     leaflet() %>%
-#       addTiles() %>%
-#       addCircleMarkers(data = filtered_data_map, 
-#                        ~lon.entity, ~lat.entity, radius = 5, color = "blue", 
-#                        label = ~Entity, clusterOptions = markerClusterOptions()) %>%
-#       addCircleMarkers(data = filtered_data_map, 
-#                        ~lon.involved, ~lat.involved, radius = 5, color = "red", 
-#                        label = ~`Involved Entity`, clusterOptions = markerClusterOptions())
-#   })
-# }
-# 
-# shinyApp(ui, server)
