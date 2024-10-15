@@ -5,6 +5,6 @@ account: markusandreash
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 13019330
-bundleId: 9224282
+bundleId:
 url: https://markusandreash.shinyapps.io/task_2/
 version: 1

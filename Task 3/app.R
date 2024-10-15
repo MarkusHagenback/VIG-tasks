@@ -97,6 +97,50 @@ country_coordinates <- country_coordinates %>%
 data <- data %>%
   left_join(country_coordinates, by = "Entity country") %>%
   left_join(country_coordinates, by = c("Involved Entity country" = "Entity country"), suffix = c(".entity", ".involved"))
+
+###############
+# Example dataset
+environment_data <- data.frame(
+  Year = rep(2019:2023, each = 3),
+  Category = rep(c("Energy Consumption", "Emissions", "Waste"), times = 5),
+  Value = c(100, 80, 50, 90, 75, 45, 85, 70, 40, 80, 65, 35, 75, 60, 30)
+)
+
+energy_sources <- data.frame(
+  Source = c("Renewable", "Non-Renewable"),
+  Percentage = c(60, 40)
+)
+
+waste_data <- data.frame(
+  Waste_Type = c("Hazardous", "Non-Hazardous"),
+  Amount = c(40, 60)
+)
+# more mock-up data:
+
+# Create sample data for emissions, energy, and waste
+
+# Emissions data (in tonnes)
+emissions_data <- data.frame(
+  Year = rep(2016:2023, each = 3),
+  Scope = rep(c("Scope 1", "Scope 2", "Scope 3"), times = 8),
+  Emissions = round(runif(24, min = 500, max = 5000), 0)  # Random emissions between 500 and 5000 tonnes
+)
+
+# Energy consumption data (in MWh)
+energy_data <- data.frame(
+  Year = rep(2016:2023, each = 2),
+  Source = rep(c("Renewable", "Non-renewable"), times = 8),
+  Consumption = round(runif(16, min = 1000, max = 10000), 0)  # Random energy consumption between 1000 and 10000 MWh
+)
+
+# Waste production data (in tonnes)
+waste_data <- data.frame(
+  Year = rep(2016:2023, each = 3),
+  Waste_Type = rep(c("Recyclable", "Non-recyclable", "Hazardous"), times = 8),
+  Amount = round(runif(24, min = 100, max = 1000), 0)  # Random waste amounts between 100 and 1000 tonnes
+)
+
+
 ################################################################################
 
 ui <- dashboardPage(
@@ -144,8 +188,10 @@ ui <- dashboardPage(
       ),
       checkboxInput("filter_zero", "Remove zero values", value = FALSE),  # Checkbox for zero values
       menuItem("Data Overview", tabName = "overview", icon = icon("table")),
-      menuItem("Visualizations", tabName = "visuals", icon = icon("chart-bar")),
-      menuItem("Graphs", tabName = "graphs", icon = icon("chart-bar"))    
+      menuItem("Visual Overview", tabName = "visuals", icon = icon("chart-bar")),
+      menuItem("Graphs", tabName = "graphs", icon = icon("chart-bar")),
+      menuItem("Visualizations (mock-up)", tabName = "visualizations-future", icon = icon("chart-bar")),
+      menuItem("KPI & Trend Analysis (mock-up)", tabName = "kpi_trend", icon = icon("chart-line"))
     )
   ),
   dashboardBody(
@@ -191,12 +237,57 @@ ui <- dashboardPage(
       tabItem(tabName = "graphs",
               fluidRow(
                 plotlyOutput("esrsComparisonChart", height = "800px")
-                )  
+              )  
+      ),
+      
+      tabItem(tabName = "kpi_trend",
+              fluidRow(
+                # Top Section: Summary KPIs
+                box(title = "Key Performance Indicators", width = 12, 
+                    valueBoxOutput("totalEmissions"),  # Total Carbon Emissions
+                    valueBoxOutput("totalEnergy"),     # Total Energy Consumption
+                    valueBoxOutput("totalWaste"),      # Total Waste Produced
+                    valueBoxOutput("emissionChangeYoY"),  # Year-over-Year Change in Emissions
+                    valueBoxOutput("energyTargetProgress") # Progress towards energy targets
+                )
+              ),
+              
+              fluidRow(
+                # Middle Section: Trend Analysis
+                box(title = "Trend Analysis", width = 12,
+                    plotlyOutput("emissionsTrendChart"),   # Line chart of Emissions Trend over Time
+                    plotlyOutput("energyTrendChart"),      # Line chart of Energy Consumption over Time
+                    plotlyOutput("wasteTrendChart")        # Line chart of Waste Production over Time
+                )
+              ),
+              
+              fluidRow(
+                # Bottom Section: Breakdown by Category
+                box(title = "Emissions Breakdown by Scope", width = 6,
+                    plotlyOutput("emissionsByScopeChart")  # Pie or Bar chart of Emissions by Scope (Scope 1, 2, 3)
+                ),
+                box(title = "Energy Use Breakdown", width = 6,
+                    plotlyOutput("energyBySourceChart")    # Pie or Bar chart of Energy Use by Source (Renewable vs. Non-renewable)
+                ),
+                box(title = "Waste Breakdown by Type", width = 6,
+                    plotlyOutput("wasteByTypeChart")       # Pie or Bar chart of Waste by Type (Recyclable, Non-recyclable, Hazardous)
                 )
               )
-              
+      ),
+      
+      tabItem(tabName = "visualizations-future",
+              fluidRow(
+                column(6, plotlyOutput("barChart")),
+                column(6, plotlyOutput("lineChart"))
+              ),
+              fluidRow(
+                column(6, plotlyOutput("stackedBarChart")),
+                column(6, plotlyOutput("heatMap"))
+              )
       )
     )
+  )
+)
 
 ################################################################################
 server <- function(input, output, session) {
@@ -540,6 +631,145 @@ server <- function(input, output, session) {
       icon = icon("list"),
       color = "purple"
     )
+  })
+  
+  ##########
+  # Bar Chart (Example of emissions over time)
+  output$barChart <- renderPlotly({
+    bar_chart <- ggplot(environment_data %>% filter(Category == "Emissions"), aes(x = Year, y = Value)) +
+      geom_col(fill = "skyblue") +
+      ggtitle("Emissions Over Time") +
+      xlab("Year") + ylab("Emissions (Tonnes)")
+    
+    ggplotly(bar_chart)
+  })
+  
+  # Line Chart (Example of energy consumption over time)
+  output$lineChart <- renderPlotly({
+    line_chart <- ggplot(environment_data %>% filter(Category == "Energy Consumption"), aes(x = Year, y = Value)) +
+      geom_line(color = "green") +
+      geom_point(size = 2) +
+      ggtitle("Energy Consumption Over Time") +
+      xlab("Year") + ylab("Energy (kWh)")
+    
+    ggplotly(line_chart)
+  })
+  
+  # Stacked Bar Chart (Example of energy consumption and emissions)
+  output$stackedBarChart <- renderPlotly({
+    stacked_bar_chart <- ggplot(environment_data, aes(x = Year, y = Value, fill = Category)) +
+      geom_bar(stat = "identity", position = "stack") +
+      ggtitle("Energy and Emissions Stacked Bar Chart") +
+      xlab("Year") + ylab("Value")
+    
+    ggplotly(stacked_bar_chart)
+  })
+  
+  # Heat Map (Example mockup of facilities emissions)
+  output$heatMap <- renderPlotly({
+    # Example heatmap data
+    facilities_data <- data.frame(
+      Facility = rep(paste("Legal Entity", 1:5), each = 3),
+      Year = rep(2019:2021, times = 5),
+      Emissions = c(20, 15, 10, 25, 18, 12, 22, 14, 11, 24, 16, 10, 23, 19, 13)
+    )
+    
+    heat_map <- ggplot(facilities_data, aes(x = Year, y = Facility, fill = Emissions)) +
+      geom_tile() +
+      scale_fill_gradient(low = "lightblue", high = "red") +
+      ggtitle("Heatmap of Emissions by Legal Entity") +
+      xlab("Year") + ylab("Legal Entity")
+    
+    ggplotly(heat_map)
+  })
+  
+  #########
+  # Summary KPIs
+  output$totalEmissions <- renderValueBox({
+    total_emissions <- sum(emissions_data$Emissions)
+    valueBox(format(total_emissions, big.mark = ","), "Total Carbon Emissions (Tonnes)", icon = icon("cloud"), color = "green")
+  })
+  
+  output$totalEnergy <- renderValueBox({
+    total_energy <- sum(energy_data$Consumption)
+    valueBox(format(total_energy, big.mark = ","), "Total Energy Consumption (MWh)", icon = icon("bolt"), color = "yellow")
+  })
+  
+  output$totalWaste <- renderValueBox({
+    total_waste <- sum(waste_data$Amount)
+    valueBox(format(total_waste, big.mark = ","), "Total Waste Produced (Tonnes)", icon = icon("trash"), color = "red")
+  })
+  
+  output$emissionChangeYoY <- renderValueBox({
+    change_yoy <- ((sum(emissions_data[emissions_data$Year == max(emissions_data$Year), "Emissions"]) - 
+                      sum(emissions_data[emissions_data$Year == max(emissions_data$Year) - 1, "Emissions"])) /
+                     sum(emissions_data[emissions_data$Year == max(emissions_data$Year) - 1, "Emissions"])) * 100
+    valueBox(paste0(round(change_yoy, 2), "%"), "Year-over-Year Change in Emissions", icon = icon("chart-line"), color = "blue")
+  })
+  
+  output$energyTargetProgress <- renderValueBox({
+    progress <- (sum(energy_data[energy_data$Source == "Renewable", "Consumption"]) /
+                   sum(energy_data$Consumption)) * 100
+    valueBox(paste0(round(progress, 2), "%"), "Renewable Energy Progress", icon = icon("leaf"), color = "teal")
+  })
+  
+  # Trend Analysis Charts
+  output$emissionsTrendChart <- renderPlotly({
+    emissions_trend <- ggplot(emissions_data, aes(x = Year, y = Emissions, color = Scope)) +
+      geom_line(size = 1.5) +
+      ggtitle("Emissions Trend Over Time") +
+      xlab("Year") + ylab("Emissions (Tonnes)")
+    ggplotly(emissions_trend)
+  })
+  
+  output$energyTrendChart <- renderPlotly({
+    energy_trend <- ggplot(energy_data, aes(x = Year, y = Consumption, color = Source)) +
+      geom_line(size = 1.5) +
+      ggtitle("Energy Consumption Trend Over Time") +
+      xlab("Year") + ylab("Energy (MWh)")
+    ggplotly(energy_trend)
+  })
+  
+  output$wasteTrendChart <- renderPlotly({
+    waste_trend <- ggplot(waste_data, aes(x = Year, y = Amount, color = Waste_Type)) +
+      geom_line(size = 1.5) +
+      ggtitle("Waste Production Trend Over Time") +
+      xlab("Year") + ylab("Waste (Tonnes)")
+    ggplotly(waste_trend)
+  })
+  
+  # Breakdown by Category Charts
+  output$emissionsByScopeChart <- renderPlotly({
+    emissions_by_scope <- emissions_data %>%
+      group_by(Scope) %>%
+      summarize(Total_Emissions = sum(Emissions))
+    
+    plot_ly(emissions_by_scope, labels = ~Scope, values = ~Total_Emissions, type = 'pie',
+            textinfo = 'label+percent',
+            insidetextorientation = 'radial') %>%
+      layout(title = 'Emissions Breakdown by Scope')
+  })
+  
+  output$energyBySourceChart <- renderPlotly({
+    energy_by_source <- energy_data %>%
+      group_by(Source) %>%
+      summarize(Total_Consumption = sum(Consumption))
+    
+    plot_ly(energy_by_source, labels = ~Source, values = ~Total_Consumption, type = 'pie',
+            textinfo = 'label+percent',
+            insidetextorientation = 'radial') %>%
+      layout(title = 'Energy Use Breakdown')
+  })
+  
+  output$wasteByTypeChart <- renderPlotly({
+    waste_by_type <- waste_data %>%
+      group_by(Waste_Type) %>%
+      summarize(Total_Waste = sum(Amount))
+    
+    plot_ly(waste_by_type, labels = ~Waste_Type, values = ~Total_Waste, type = 'pie',
+            textinfo = 'label+percent',
+            insidetextorientation = 'radial') %>%
+      layout(title = 'Waste Breakdown by Type')
   })
 }
 

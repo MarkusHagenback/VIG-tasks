@@ -1,5 +1,6 @@
-# TS task
+# TS task - 2
 # Author: Markus Hagenbäck
+rm(list=ls())
 
 # Load necessary libraries
 library(dplyr)
@@ -10,8 +11,7 @@ library(shinyWidgets)
 library(DT)
 library(scales)  
 library(rsconnect)
-
-rm(list=ls())
+library(shinydashboard)
 
 # Read in the data from Excel
 file_url <- "https://raw.githubusercontent.com/MarkusHagenback/VIG-tasks/refs/heads/main/002%20-%20Time%20Series/S0201_ts_dummy.csv"
@@ -20,7 +20,7 @@ data <- read.csv(file_url)
 # Assuming you've already loaded the dataset as 'data'
 data_cleaned <- data %>%
   # Recode the company dummy (X.BIC.S2QRT2) as firm ID
-  mutate(Firm_ID = as.numeric(as.factor(X.BIC.S2QRT2))) %>%
+  mutate(Firm_ID = as.numeric(factor(X.BIC.S2QRT2, levels = unique(X.BIC.S2QRT2)))) %>%
   # Rename columns for clarity
   rename(VG = X.BIC.S2ROW,
          Balance_Sheet_Position = FISCVARNT,
@@ -51,7 +51,18 @@ data_cleaned <- data_cleaned %>%
   )
 
 # Ensure Time is recognized as a factor
-data_cleaned$Time <- factor(data_cleaned$Time, levels = unique(data_cleaned$Time))
+desired_order <- c("2015 13", "2015 16", "2016 3", "2016 6", "2016 9", "2016 12", 
+                   "2016 16", "2017 3", "2017 6", "2017 9", "2017 12", 
+                   "2017 16", "2018 3", "2018 6", "2018 9", "2018 11", 
+                   "2018 12", "2018 15", "2018 16", "2019 3", "2019 6", 
+                   "2019 9", "2019 12", "2019 15", "2019 16", "2020 3", 
+                   "2020 6", "2020 9", "2020 12", "2020 14", "2020 16", 
+                   "2021 3", "2021 6", "2021 9", "2021 12", "2021 16", 
+                   "2022 3", "2022 6")
+# Ensure Time is recognized as a factor with specified levels
+data_cleaned$Time <- factor(data_cleaned$Time, levels = desired_order)
+
+# data_cleaned$Time <- factor(data_cleaned$Time, levels = unique(data_cleaned$Time))
 
 # Clean the VG and Balance Sheet Position columns in data_cleaned
 data_cleaned$VG <- trimws(data_cleaned$VG)
@@ -534,434 +545,454 @@ data_cleaned <- data_cleaned %>%
     TRUE ~ VG  # Keep original value if no change is needed
   ))
 
+unique_periods <- sort(unique(data_cleaned$Period))
 ################################################################################
 
 # UI
-ui <- fluidPage(
-  # Adding custom fonts and styling
-  tags$head(
-    tags$link(href = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap", rel = "stylesheet"),
-    tags$style(HTML("
-      body {
-        font-family: 'Roboto', sans-serif;
-      }
-      .title-panel {
-        font-weight: bold;
-        font-size: 24px;
-        color: #333;
-      }
-      .checkbox-label {
-        margin-bottom: 10px;
-        font-size: 14px;
-      }
-      .shiny-bound-output {
-        margin-top: 20px;
-      }
-      .btn-primary {
-        background-color: #007BFF; 
-        border: none;
-        padding: 10px 20px;
-        font-size: 14px;
-      }
-      .nav-tabs > li > a {
-        color: #555;
-        font-weight: bold;
-        font-size: 15px;
-      }
-      .nav-tabs > li.active > a {
-        background-color: #007BFF;
-        color: white;
-      }
-      .nav-tabs > li > a:hover {
-        background-color: #e7e7e7;
-      }
-    "))
+ui <- dashboardPage(
+  skin = "red",  
+  title = "",  # Adjusted title
+  
+  # HEADER ------------------------------------------------------------------
+  dashboardHeader(
+    title = span(
+      img(src = "VIG_icon.png", height = 40)),
+    titleWidth = 300
   ),
   
-  # Title of the app
-  tags$div(class = "title-panel", "Task 2"),
+  # SIDEBAR -----------------------------------------------------------------
+ 
+   dashboardSidebar(
+    width = 300,
+    sidebarMenu(
+      menuItem("Filters", tabName = "filters", icon = icon("filter")),
+      menuItem("Data", tabName = "data", icon = icon("table")),
+      menuItem("Graphs", tabName = "graphs", icon = icon("chart-bar"))
+    )
+  ),
   
-  # Wrap tabsetPanel in a div with specified width
-  tags$div(style = "width: 2500px; margin: auto;",  # Set the desired width here
-           tabsetPanel(
-             # First Tab: Filters
-             tabPanel("Filters", 
-                      sidebarLayout(
-                        sidebarPanel(
-                          radioButtons("firm_filter", "Filter firm:", 
-                                       choices = unique(data_cleaned$Firm_ID),
-                                       selected = 1),
-                          
-                          # Use the numeric range of Period for filtering without changing its format
-                          sliderInput("date_filter", "Filter time period:", 
-                                      min = min(data_cleaned$Period), 
-                                      max = max(data_cleaned$Period),
-                                      value = c(min(data_cleaned$Period), max(data_cleaned$Period)),
-                                      step = 100),  # Adjust the step to suit the granularity of your Periods
-                          
-                          checkboxGroupInput("template_filter", "Filter Solvency II template:", 
-                                             choices = unique(data_cleaned$Solvency_II_template),
-                                             selected = unique(data_cleaned$Solvency_II_template)),
-                          
-                          checkboxGroupInput("vg_filter", "Filter VG:", 
-                                             choices = unique(data_cleaned$VG),
-                                             selected = unique(data_cleaned$VG)),
-                          
-                          # Add a dividing line between sections
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Assets"),
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          
-                          # Checkbox inputs for each option
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "total_assets"), 
-                                   tags$label(`for` = "total_assets", "Total assets (R0500)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "goodwill"), 
-                                   tags$label(`for` = "goodwill", "Goodwill (R0010)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "deferred_acquisition"), 
-                                   tags$label(`for` = "deferred_acquisition", "Deferred acquisition costs (R0020)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "intangible_assets"), 
-                                   tags$label(`for` = "intangible_assets", "Intangible assets (R0030)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "deferred_tax"), 
-                                   tags$label(`for` = "deferred_tax", "Deferred tax assets (R0040)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "pension_surplus"), 
-                                   tags$label(`for` = "pension_surplus", "Pension benefit surplus (R0050)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "property_owned"), 
-                                   tags$label(`for` = "property_owned", "Property, plant & equipment held for own use (R0060)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "investments"), 
-                                   tags$label(`for` = "investments", "Investments (other than assets held for index-linked and unit-linked contracts) (R0070)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "property_other"), 
-                                   tags$label(`for` = "property_other", "Property (other than for own use) (R0080)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "holdings"), 
-                                   tags$label(`for` = "holdings", "Holdings in related undertakings, including participations (R0090)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "equities"), 
-                                   tags$label(`for` = "equities", "Equities (R0100)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "equities_listed"), 
-                                   tags$label(`for` = "equities_listed", "Equities - listed (R0110)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "equities_unlisted"), 
-                                   tags$label(`for` = "equities_unlisted", "Equities - unlisted (R0120)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "bonds"), 
-                                   tags$label(`for` = "bonds", "Bonds (R0130)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "government_bonds"), 
-                                   tags$label(`for` = "government_bonds", "Government Bonds (R0140)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "corporate_bonds"), 
-                                   tags$label(`for` = "corporate_bonds", "Corporate Bonds (R0150)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "structured_notes"), 
-                                   tags$label(`for` = "structured_notes", "Structured notes (R0160)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "collateralised"), 
-                                   tags$label(`for` = "collateralised", "Collateralised securities (R0170)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "collective_investments"), 
-                                   tags$label(`for` = "collective_investments", "Collective Investments Undertakings (R0180)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "derivatives"), 
-                                   tags$label(`for` = "derivatives", "Derivatives (R0190)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "deposits"), 
-                                   tags$label(`for` = "deposits", "Deposits other than cash equivalents (R0200)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "other_investments"), 
-                                   tags$label(`for` = "other_investments", "Other investments (R0210)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "assets_index_linked"), 
-                                   tags$label(`for` = "assets_index_linked", "Assets held for index-linked and unit-linked contracts (R0220)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "loans_mortgages"), 
-                                   tags$label(`for` = "loans_mortgages", "Loans and mortgages (R0230)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "loans_policies"), 
-                                   tags$label(`for` = "loans_policies", "Loans on policies (R0240)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "loans_individuals"), 
-                                   tags$label(`for` = "loans_individuals", "Loans and mortgages to individuals (R0250)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "other_loans"), 
-                                   tags$label(`for` = "other_loans", "Other loans and mortgages (R0260)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "reinsurance_recoverables"), 
-                                   tags$label(`for` = "reinsurance_recoverables", "Reinsurance recoverables from: (R0270)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "non_life_health"), 
-                                   tags$label(`for` = "non_life_health", "Non-life and health similar to non-life (R0280)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "non_life_excluding_health"), 
-                                   tags$label(`for` = "non_life_excluding_health", "Non-life excluding health (R0290)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "health_similar_non_life"), 
-                                   tags$label(`for` = "health_similar_non_life", "Health similar to non-life (R0300)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "life_health"), 
-                                   tags$label(`for` = "life_health", "Life and health similar to life, excluding health and index-linked and unit-linked (R0310)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "health_similar_life"), 
-                                   tags$label(`for` = "health_similar_life", "Health similar to life (R0320)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "life_excluding_health"), 
-                                   tags$label(`for` = "life_excluding_health", "Life excluding health and index-linked and unit-linked (R0330)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "life_index_linked"), 
-                                   tags$label(`for` = "life_index_linked", "Life index-linked and unit-linked (R0340)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "deposits_cedants"), 
-                                   tags$label(`for` = "deposits_cedants", "Deposits to cedants (R0350)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "receivables"), 
-                                   tags$label(`for` = "receivables", "Insurance and intermediaries receivables (R0360)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "reinsurance_receivables"), 
-                                   tags$label(`for` = "reinsurance_receivables", "Reinsurance receivables (R0370)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "receivables_trade"), 
-                                   tags$label(`for` = "receivables_trade", "Receivables (trade, not insurance) (R0380)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "own_shares"), 
-                                   tags$label(`for` = "own_shares", "Own shares (held directly) (R0390)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "amounts_due"), 
-                                   tags$label(`for` = "amounts_due", "Amounts due in respect of own fund items or initial fund called up but not yet paid in (R0400)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "cash_equivalents"), 
-                                   tags$label(`for` = "cash_equivalents", "Cash and cash equivalents (R0410)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "other_assets"), 
-                                   tags$label(`for` = "other_assets", "Any other assets, not elsewhere shown (R0420)")),
-                          
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Liabilities"),
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          ################### Liabilities below
-                          # Generate a checkbox for each liability column
-                          
-                                     tags$div(class = "checkbox-label", 
-                                              tags$input(type = "checkbox", id = "total_liabilities"), 
-                                              tags$label(`for` = "total_liabilities", "Total liabilities (R0900)")),
-                                     tags$div(class = "checkbox-label indent-1", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_non_life"), 
-                                              tags$label(`for` = "technical_provisions_non_life", "Technical provisions – non-life (R0510)")),
-                                     tags$div(class = "checkbox-label indent-2", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_non_life_excluding_health"), 
-                                              tags$label(`for` = "technical_provisions_non_life_excluding_health", "Technical provisions – non-life (excluding health) (R0520)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_1"), 
-                                              tags$label(`for` = "technical_provisions_calculated_as_a_whole_1", "Technical provisions calculated as a whole (R0530)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "best_estimate_1"), 
-                                              tags$label(`for` = "best_estimate_1", "Best Estimate (R0540)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "risk_margin_1"), 
-                                              tags$label(`for` = "risk_margin_1", "Risk margin (R0550)")),
-                                     tags$div(class = "checkbox-label indent-2", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_health_similar_to_non_life"), 
-                                              tags$label(`for` = "technical_provisions_health_similar_to_non_life", "Technical provisions - health (similar to non-life) (R0560)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_2"), 
-                                              tags$label(`for` = "technical_provisions_calculated_as_a_whole_2", "Technical provisions calculated as a whole (R0570)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "best_estimate_2"), 
-                                              tags$label(`for` = "best_estimate_2", "Best Estimate (R0580)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "risk_margin_2"), 
-                                              tags$label(`for` = "risk_margin_2", "Risk margin (R0590)")),
-                                     tags$div(class = "checkbox-label indent-1", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_life_excluding_index_linked_and_unit_linked"), 
-                                              tags$label(`for` = "technical_provisions_life_excluding_index_linked_and_unit_linked", "Technical provisions – life (excluding index-linked and unit-linked) (R0600)")),
-                                     tags$div(class = "checkbox-label indent-2", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_health_similar_to_life"), 
-                                              tags$label(`for` = "technical_provisions_health_similar_to_life", "Technical provisions - health (similar to life) (R0610)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_3"), 
-                                              tags$label(`for` = "technical_provisions_calculated_as_a_whole_3", "Technical provisions calculated as a whole (R0620)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "best_estimate_3"), 
-                                              tags$label(`for` = "best_estimate_3", "Best Estimate (R0630)")),
-                                     tags$div(class = "checkbox-label indent-3", 
-                                              tags$input(type = "checkbox", id = "risk_margin_3"), 
-                                              tags$label(`for` = "risk_margin_3", "Risk margin (R0640)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "technical_provisions_life_excluding_health_and_index_linked_and_unit_linked"), 
-                                   tags$label(`for` = "technical_provisions_life_excluding_health_and_index_linked_and_unit_linked", "Technical provisions – life (excluding health and index-linked and unit-linked) (R0650)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_4"), 
-                                   tags$label(`for` = "technical_provisions_calculated_as_a_whole_4", "Technical provisions calculated as a whole (R0660)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "best_estimate_4"), 
-                                   tags$label(`for` = "best_estimate_4", "Best Estimate (R0670)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "risk_margin_4"), 
-                                   tags$label(`for` = "risk_margin_4", "Risk margin (R0680)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "technical_provisions_index_linked_and_unit_linked"), 
-                                   tags$label(`for` = "technical_provisions_index_linked_and_unit_linked", "Technical provisions – index-linked and unit-linked (R0690)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_5"), 
-                                   tags$label(`for` = "technical_provisions_calculated_as_a_whole_5", "Technical provisions calculated as a whole (R0700)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "best_estimate_5"), 
-                                   tags$label(`for` = "best_estimate_5", "Best Estimate (R0710)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "risk_margin_5"), 
-                                   tags$label(`for` = "risk_margin_5", "Risk margin (R0720)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "other_technical_provisions"), 
-                                   tags$label(`for` = "other_technical_provisions", "Other technical provisions (R0730)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "contingent_liabilities"), 
-                                   tags$label(`for` = "contingent_liabilities", "Contingent liabilities (R0740)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "provisions_other_than_technical_provisions"), 
-                                   tags$label(`for` = "provisions_other_than_technical_provisions", "Provisions other than technical provisions (R0750)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "pension_benefit_obligations"), 
-                                   tags$label(`for` = "pension_benefit_obligations", "Pension benefit obligations (R0760)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "deposits_from_reinsurers"), 
-                                   tags$label(`for` = "deposits_from_reinsurers", "Deposits from reinsurers (R0770)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "deferred_tax_liabilities"), 
-                                   tags$label(`for` = "deferred_tax_liabilities", "Deferred tax liabilities (R0780)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "derivatives_l"), 
-                                   tags$label(`for` = "derivatives_l", "Derivatives (R0790)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions"), 
-                                   tags$label(`for` = "debts_owed_to_credit_institutions", "Debts owed to credit institutions (R0800)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_domestically"), 
-                                   tags$label(`for` = "debts_owed_to_credit_institutions_resident_domestically", "Debts owed to credit institutions – resident domestically (ER0801)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_in_the_euro_area_other_than_domestic"), 
-                                   tags$label(`for` = "debts_owed_to_credit_institutions_resident_in_the_euro_area_other_than_domestic", "Debts owed to credit institutions – resident in the euro area (ER0802)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_in_rest_of_the_world"), 
-                                   tags$label(`for` = "debts_owed_to_credit_institutions_resident_in_rest_of_the_world", "Debts owed to credit institutions – resident in rest of the world (ER0803)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "financial_liabilities_other_than_debts_owed_to_credit_institutions"), 
-                                   tags$label(`for` = "financial_liabilities_other_than_debts_owed_to_credit_institutions", "Financial liabilities other than debts owed to credit institutions (R0810)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions"), 
-                                   tags$label(`for` = "debts_owed_to_non_credit_institutions", "Debts owed to non-credit institutions (ER0811)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_domestically"), 
-                                   tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_domestically", "Debts owed to non-credit institutions – resident domestically (ER0812)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_in_the_euro_area_other_than_domestic"), 
-                                   tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_in_the_euro_area_other_than_domestic", "Debts owed to non-credit institutions – resident in the euro area (ER0813)")),
-                          tags$div(class = "checkbox-label indent-3", 
-                                   tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_in_rest_of_the_world"), 
-                                   tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_in_rest_of_the_world", "Debts owed to non-credit institutions – resident in rest of the world (ER0814)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "other_financial_liabilities_debt_securities_issued"), 
-                                   tags$label(`for` = "other_financial_liabilities_debt_securities_issued", "Other financial liabilities – debt securities issued (ER0815)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "insurance_intermediaries_payables"), 
-                                   tags$label(`for` = "insurance_intermediaries_payables", "Insurance intermediaries payables (R0820)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "reinsurance_payables"), 
-                                   tags$label(`for` = "reinsurance_payables", "Reinsurance payables (R0830)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "payables_trade_not_insurance"), 
-                                   tags$label(`for` = "payables_trade_not_insurance", "Payables – trade not insurance (R0840)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "subordinated_liabilities"), 
-                                   tags$label(`for` = "subordinated_liabilities", "Subordinated liabilities (R0850)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "subordinated_liabilities_not_in_Basic_Own_Funds"), 
-                                   tags$label(`for` = "subordinated_liabilities_not_in_Basic_Own_Funds", "Subordinated liabilities not in Basic Own Funds (R0860)")),
-                          tags$div(class = "checkbox-label indent-2", 
-                                   tags$input(type = "checkbox", id = "subordinated_liabilities_in_Basic_Own_Funds"), 
-                                   tags$label(`for` = "subordinated_liabilities_in_Basic_Own_Funds", "Subordinated liabilities in Basic Own Funds (R0870)")),
-                          tags$div(class = "checkbox-label indent-1", 
-                                   tags$input(type = "checkbox", id = "any_other_liabilities_not_elsewhere_shown"), 
-                                   tags$label(`for` = "any_other_liabilities_not_elsewhere_shown", "Any other liabilities not elsewhere shown (R0880)")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "excess_of_assets_over_liabilities"), 
-                                   tags$label(`for` = "excess_of_assets_over_liabilities", "Excess of assets over liabilities (R1000)")),
-           
-                          ### Buttons for the ones we dont know what they are:
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Unknown classes"),
-                          tags$hr(style = "border-top: 1px solid #007BFF;"),  # Horizontal line
-                          
-                          # Define the list of codes
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0010"), 
-                                   tags$label(`for` = "GAR0010", "GAR0010")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0020"), 
-                                   tags$label(`for` = "GAR0020", "GAR0020")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0030"), 
-                                   tags$label(`for` = "GAR0030", "GAR0030")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0040"), 
-                                   tags$label(`for` = "GAR0040", "GAR0040")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0050"), 
-                                   tags$label(`for` = "GAR0050", "GAR0050")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0080"), 
-                                   tags$label(`for` = "GAR0080", "GAR0080")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0100"), 
-                                   tags$label(`for` = "GAR0100", "GAR0100")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0120"), 
-                                   tags$label(`for` = "GAR0120", "GAR0120")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0140"), 
-                                   tags$label(`for` = "GAR0140", "GAR0140")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0160"), 
-                                   tags$label(`for` = "GAR0160", "GAR0160")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0110"), 
-                                   tags$label(`for` = "GAR0110", "GAR0110")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0130"), 
-                                   tags$label(`for` = "GAR0130", "GAR0130")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0150"), 
-                                   tags$label(`for` = "GAR0150", "GAR0150")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0170"), 
-                                   tags$label(`for` = "GAR0170", "GAR0170")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0090"), 
-                                   tags$label(`for` = "GAR0090", "GAR0090")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0060"), 
-                                   tags$label(`for` = "GAR0060", "GAR0060")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0070"), 
-                                   tags$label(`for` = "GAR0070", "GAR0070")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0042"), 
-                                   tags$label(`for` = "GAR0042", "GAR0042")),
-                          tags$div(class = "checkbox-label", 
-                                   tags$input(type = "checkbox", id = "GAR0041"), 
-                                   tags$label(`for` = "GAR0041", "GAR0041")),
-                          
-                          ###################
-                          
-                          # Custom CSS for indentation
-                          tags$style(HTML("
+  # BODY --------------------------------------------------------------------
+  dashboardBody(
+    # Including Google fonts and custom styles
+    tags$head(
+      tags$link(href = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap", rel = "stylesheet"),
+      tags$style(HTML("
+        body {
+          font-family: 'Roboto', sans-serif;
+        }
+        .title-panel {
+          font-weight: bold;
+          font-size: 24px;
+          color: #333;
+        }
+        .checkbox-label {
+          margin-bottom: 10px;
+          font-size: 14px;
+        }
+        .shiny-bound-output {
+          margin-top: 20px;
+        }
+        .btn-primary {
+          background-color: black; 
+          border: none;
+          padding: 10px 20px;
+          font-size: 14px;
+        }
+        .nav-tabs > li > a {
+          color: #555;
+          font-weight: bold;
+          font-size: 15px;
+        }
+        .nav-tabs > li.active > a {
+          background-color: black;
+          color: white;
+        }
+        .nav-tabs > li > a:hover {
+          background-color: #e7e7e7;
+        }
+      "))
+    ),
+    
+    # Tab Items inside the dashboard body
+    tabItems(
+      # First Tab: Filters
+      tabItem(tabName = "filters",
+              fluidRow(
+                box(
+                  title = "Filter Options", width = 12, solidHeader = TRUE, status = "primary",
+                  sidebarLayout(
+                    sidebarPanel(
+                      radioButtons("firm_filter", "Filter firm:", 
+                                   choices = unique(data_cleaned$Firm_ID),
+                                   selected = 1),
+                      sliderInput("date_filter", "Filter time period:", 
+                                  min = min(unique_periods), 
+                                  max = max(unique_periods),
+                                  value = c(min(unique_periods), max(unique_periods)),
+                                  step = NULL,  # Use step = 1 to allow selection of every unique period
+                                  ticks = FALSE),
+                      checkboxGroupInput("template_filter", "Filter Solvency II template:", 
+                                         choices = unique(data_cleaned$Solvency_II_template),
+                                         selected = unique(data_cleaned$Solvency_II_template)),
+                      checkboxGroupInput("vg_filter", "Filter VG:", 
+                                         choices = unique(data_cleaned$VG),
+                                         selected = unique(data_cleaned$VG)),
+                      
+                      # Add a dividing line between sections
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Assets"),
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      
+                      # Checkbox inputs for each option
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "total_assets"), 
+                               tags$label(`for` = "total_assets", "Total assets (R0500)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "goodwill"), 
+                               tags$label(`for` = "goodwill", "Goodwill (R0010)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "deferred_acquisition"), 
+                               tags$label(`for` = "deferred_acquisition", "Deferred acquisition costs (R0020)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "intangible_assets"), 
+                               tags$label(`for` = "intangible_assets", "Intangible assets (R0030)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "deferred_tax"), 
+                               tags$label(`for` = "deferred_tax", "Deferred tax assets (R0040)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "pension_surplus"), 
+                               tags$label(`for` = "pension_surplus", "Pension benefit surplus (R0050)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "property_owned"), 
+                               tags$label(`for` = "property_owned", "Property, plant & equipment held for own use (R0060)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "investments"), 
+                               tags$label(`for` = "investments", "Investments (other than assets held for index-linked and unit-linked contracts) (R0070)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "property_other"), 
+                               tags$label(`for` = "property_other", "Property (other than for own use) (R0080)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "holdings"), 
+                               tags$label(`for` = "holdings", "Holdings in related undertakings, including participations (R0090)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "equities"), 
+                               tags$label(`for` = "equities", "Equities (R0100)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "equities_listed"), 
+                               tags$label(`for` = "equities_listed", "Equities - listed (R0110)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "equities_unlisted"), 
+                               tags$label(`for` = "equities_unlisted", "Equities - unlisted (R0120)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "bonds"), 
+                               tags$label(`for` = "bonds", "Bonds (R0130)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "government_bonds"), 
+                               tags$label(`for` = "government_bonds", "Government Bonds (R0140)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "corporate_bonds"), 
+                               tags$label(`for` = "corporate_bonds", "Corporate Bonds (R0150)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "structured_notes"), 
+                               tags$label(`for` = "structured_notes", "Structured notes (R0160)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "collateralised"), 
+                               tags$label(`for` = "collateralised", "Collateralised securities (R0170)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "collective_investments"), 
+                               tags$label(`for` = "collective_investments", "Collective Investments Undertakings (R0180)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "derivatives"), 
+                               tags$label(`for` = "derivatives", "Derivatives (R0190)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "deposits"), 
+                               tags$label(`for` = "deposits", "Deposits other than cash equivalents (R0200)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "other_investments"), 
+                               tags$label(`for` = "other_investments", "Other investments (R0210)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "assets_index_linked"), 
+                               tags$label(`for` = "assets_index_linked", "Assets held for index-linked and unit-linked contracts (R0220)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "loans_mortgages"), 
+                               tags$label(`for` = "loans_mortgages", "Loans and mortgages (R0230)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "loans_policies"), 
+                               tags$label(`for` = "loans_policies", "Loans on policies (R0240)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "loans_individuals"), 
+                               tags$label(`for` = "loans_individuals", "Loans and mortgages to individuals (R0250)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "other_loans"), 
+                               tags$label(`for` = "other_loans", "Other loans and mortgages (R0260)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "reinsurance_recoverables"), 
+                               tags$label(`for` = "reinsurance_recoverables", "Reinsurance recoverables from: (R0270)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "non_life_health"), 
+                               tags$label(`for` = "non_life_health", "Non-life and health similar to non-life (R0280)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "non_life_excluding_health"), 
+                               tags$label(`for` = "non_life_excluding_health", "Non-life excluding health (R0290)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "health_similar_non_life"), 
+                               tags$label(`for` = "health_similar_non_life", "Health similar to non-life (R0300)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "life_health"), 
+                               tags$label(`for` = "life_health", "Life and health similar to life, excluding health and index-linked and unit-linked (R0310)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "health_similar_life"), 
+                               tags$label(`for` = "health_similar_life", "Health similar to life (R0320)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "life_excluding_health"), 
+                               tags$label(`for` = "life_excluding_health", "Life excluding health and index-linked and unit-linked (R0330)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "life_index_linked"), 
+                               tags$label(`for` = "life_index_linked", "Life index-linked and unit-linked (R0340)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "deposits_cedants"), 
+                               tags$label(`for` = "deposits_cedants", "Deposits to cedants (R0350)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "receivables"), 
+                               tags$label(`for` = "receivables", "Insurance and intermediaries receivables (R0360)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "reinsurance_receivables"), 
+                               tags$label(`for` = "reinsurance_receivables", "Reinsurance receivables (R0370)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "receivables_trade"), 
+                               tags$label(`for` = "receivables_trade", "Receivables (trade, not insurance) (R0380)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "own_shares"), 
+                               tags$label(`for` = "own_shares", "Own shares (held directly) (R0390)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "amounts_due"), 
+                               tags$label(`for` = "amounts_due", "Amounts due in respect of own fund items or initial fund called up but not yet paid in (R0400)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "cash_equivalents"), 
+                               tags$label(`for` = "cash_equivalents", "Cash and cash equivalents (R0410)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "other_assets"), 
+                               tags$label(`for` = "other_assets", "Any other assets, not elsewhere shown (R0420)")),
+                      
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Liabilities"),
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      ################### Liabilities below
+                      # Generate a checkbox for each liability column
+                      
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "total_liabilities"), 
+                               tags$label(`for` = "total_liabilities", "Total liabilities (R0900)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "technical_provisions_non_life"), 
+                               tags$label(`for` = "technical_provisions_non_life", "Technical provisions – non-life (R0510)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "technical_provisions_non_life_excluding_health"), 
+                               tags$label(`for` = "technical_provisions_non_life_excluding_health", "Technical provisions – non-life (excluding health) (R0520)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_1"), 
+                               tags$label(`for` = "technical_provisions_calculated_as_a_whole_1", "Technical provisions calculated as a whole (R0530)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "best_estimate_1"), 
+                               tags$label(`for` = "best_estimate_1", "Best Estimate (R0540)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "risk_margin_1"), 
+                               tags$label(`for` = "risk_margin_1", "Risk margin (R0550)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "technical_provisions_health_similar_to_non_life"), 
+                               tags$label(`for` = "technical_provisions_health_similar_to_non_life", "Technical provisions - health (similar to non-life) (R0560)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_2"), 
+                               tags$label(`for` = "technical_provisions_calculated_as_a_whole_2", "Technical provisions calculated as a whole (R0570)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "best_estimate_2"), 
+                               tags$label(`for` = "best_estimate_2", "Best Estimate (R0580)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "risk_margin_2"), 
+                               tags$label(`for` = "risk_margin_2", "Risk margin (R0590)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "technical_provisions_life_excluding_index_linked_and_unit_linked"), 
+                               tags$label(`for` = "technical_provisions_life_excluding_index_linked_and_unit_linked", "Technical provisions – life (excluding index-linked and unit-linked) (R0600)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "technical_provisions_health_similar_to_life"), 
+                               tags$label(`for` = "technical_provisions_health_similar_to_life", "Technical provisions - health (similar to life) (R0610)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_3"), 
+                               tags$label(`for` = "technical_provisions_calculated_as_a_whole_3", "Technical provisions calculated as a whole (R0620)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "best_estimate_3"), 
+                               tags$label(`for` = "best_estimate_3", "Best Estimate (R0630)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "risk_margin_3"), 
+                               tags$label(`for` = "risk_margin_3", "Risk margin (R0640)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "technical_provisions_life_excluding_health_and_index_linked_and_unit_linked"), 
+                               tags$label(`for` = "technical_provisions_life_excluding_health_and_index_linked_and_unit_linked", "Technical provisions – life (excluding health and index-linked and unit-linked) (R0650)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_4"), 
+                               tags$label(`for` = "technical_provisions_calculated_as_a_whole_4", "Technical provisions calculated as a whole (R0660)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "best_estimate_4"), 
+                               tags$label(`for` = "best_estimate_4", "Best Estimate (R0670)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "risk_margin_4"), 
+                               tags$label(`for` = "risk_margin_4", "Risk margin (R0680)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "technical_provisions_index_linked_and_unit_linked"), 
+                               tags$label(`for` = "technical_provisions_index_linked_and_unit_linked", "Technical provisions – index-linked and unit-linked (R0690)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "technical_provisions_calculated_as_a_whole_5"), 
+                               tags$label(`for` = "technical_provisions_calculated_as_a_whole_5", "Technical provisions calculated as a whole (R0700)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "best_estimate_5"), 
+                               tags$label(`for` = "best_estimate_5", "Best Estimate (R0710)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "risk_margin_5"), 
+                               tags$label(`for` = "risk_margin_5", "Risk margin (R0720)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "other_technical_provisions"), 
+                               tags$label(`for` = "other_technical_provisions", "Other technical provisions (R0730)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "contingent_liabilities"), 
+                               tags$label(`for` = "contingent_liabilities", "Contingent liabilities (R0740)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "provisions_other_than_technical_provisions"), 
+                               tags$label(`for` = "provisions_other_than_technical_provisions", "Provisions other than technical provisions (R0750)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "pension_benefit_obligations"), 
+                               tags$label(`for` = "pension_benefit_obligations", "Pension benefit obligations (R0760)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "deposits_from_reinsurers"), 
+                               tags$label(`for` = "deposits_from_reinsurers", "Deposits from reinsurers (R0770)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "deferred_tax_liabilities"), 
+                               tags$label(`for` = "deferred_tax_liabilities", "Deferred tax liabilities (R0780)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "derivatives_l"), 
+                               tags$label(`for` = "derivatives_l", "Derivatives (R0790)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions"), 
+                               tags$label(`for` = "debts_owed_to_credit_institutions", "Debts owed to credit institutions (R0800)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_domestically"), 
+                               tags$label(`for` = "debts_owed_to_credit_institutions_resident_domestically", "Debts owed to credit institutions – resident domestically (ER0801)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_in_the_euro_area_other_than_domestic"), 
+                               tags$label(`for` = "debts_owed_to_credit_institutions_resident_in_the_euro_area_other_than_domestic", "Debts owed to credit institutions – resident in the euro area (ER0802)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_credit_institutions_resident_in_rest_of_the_world"), 
+                               tags$label(`for` = "debts_owed_to_credit_institutions_resident_in_rest_of_the_world", "Debts owed to credit institutions – resident in rest of the world (ER0803)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "financial_liabilities_other_than_debts_owed_to_credit_institutions"), 
+                               tags$label(`for` = "financial_liabilities_other_than_debts_owed_to_credit_institutions", "Financial liabilities other than debts owed to credit institutions (R0810)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions"), 
+                               tags$label(`for` = "debts_owed_to_non_credit_institutions", "Debts owed to non-credit institutions (ER0811)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_domestically"), 
+                               tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_domestically", "Debts owed to non-credit institutions – resident domestically (ER0812)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_in_the_euro_area_other_than_domestic"), 
+                               tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_in_the_euro_area_other_than_domestic", "Debts owed to non-credit institutions – resident in the euro area (ER0813)")),
+                      tags$div(class = "checkbox-label indent-3", 
+                               tags$input(type = "checkbox", id = "debts_owed_to_non_credit_institutions_resident_in_rest_of_the_world"), 
+                               tags$label(`for` = "debts_owed_to_non_credit_institutions_resident_in_rest_of_the_world", "Debts owed to non-credit institutions – resident in rest of the world (ER0814)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "other_financial_liabilities_debt_securities_issued"), 
+                               tags$label(`for` = "other_financial_liabilities_debt_securities_issued", "Other financial liabilities – debt securities issued (ER0815)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "insurance_intermediaries_payables"), 
+                               tags$label(`for` = "insurance_intermediaries_payables", "Insurance intermediaries payables (R0820)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "reinsurance_payables"), 
+                               tags$label(`for` = "reinsurance_payables", "Reinsurance payables (R0830)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "payables_trade_not_insurance"), 
+                               tags$label(`for` = "payables_trade_not_insurance", "Payables – trade not insurance (R0840)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "subordinated_liabilities"), 
+                               tags$label(`for` = "subordinated_liabilities", "Subordinated liabilities (R0850)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "subordinated_liabilities_not_in_Basic_Own_Funds"), 
+                               tags$label(`for` = "subordinated_liabilities_not_in_Basic_Own_Funds", "Subordinated liabilities not in Basic Own Funds (R0860)")),
+                      tags$div(class = "checkbox-label indent-2", 
+                               tags$input(type = "checkbox", id = "subordinated_liabilities_in_Basic_Own_Funds"), 
+                               tags$label(`for` = "subordinated_liabilities_in_Basic_Own_Funds", "Subordinated liabilities in Basic Own Funds (R0870)")),
+                      tags$div(class = "checkbox-label indent-1", 
+                               tags$input(type = "checkbox", id = "any_other_liabilities_not_elsewhere_shown"), 
+                               tags$label(`for` = "any_other_liabilities_not_elsewhere_shown", "Any other liabilities not elsewhere shown (R0880)")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "excess_of_assets_over_liabilities"), 
+                               tags$label(`for` = "excess_of_assets_over_liabilities", "Excess of assets over liabilities (R1000)")),
+                      
+                      ### Buttons for the ones we dont know what they are:
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      tags$div(style = "text-align: center; font-weight: bold; margin-bottom: -20px; font-size: 12px;", "Unknown classes"),
+                      tags$hr(style = "border-top: 1px solid black;"),  # Horizontal line
+                      
+                      # Define the list of codes
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0010"), 
+                               tags$label(`for` = "GAR0010", "GAR0010")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0020"), 
+                               tags$label(`for` = "GAR0020", "GAR0020")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0030"), 
+                               tags$label(`for` = "GAR0030", "GAR0030")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0040"), 
+                               tags$label(`for` = "GAR0040", "GAR0040")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0050"), 
+                               tags$label(`for` = "GAR0050", "GAR0050")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0080"), 
+                               tags$label(`for` = "GAR0080", "GAR0080")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0100"), 
+                               tags$label(`for` = "GAR0100", "GAR0100")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0120"), 
+                               tags$label(`for` = "GAR0120", "GAR0120")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0140"), 
+                               tags$label(`for` = "GAR0140", "GAR0140")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0160"), 
+                               tags$label(`for` = "GAR0160", "GAR0160")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0110"), 
+                               tags$label(`for` = "GAR0110", "GAR0110")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0130"), 
+                               tags$label(`for` = "GAR0130", "GAR0130")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0150"), 
+                               tags$label(`for` = "GAR0150", "GAR0150")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0170"), 
+                               tags$label(`for` = "GAR0170", "GAR0170")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0090"), 
+                               tags$label(`for` = "GAR0090", "GAR0090")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0060"), 
+                               tags$label(`for` = "GAR0060", "GAR0060")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0070"), 
+                               tags$label(`for` = "GAR0070", "GAR0070")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0042"), 
+                               tags$label(`for` = "GAR0042", "GAR0042")),
+                      tags$div(class = "checkbox-label", 
+                               tags$input(type = "checkbox", id = "GAR0041"), 
+                               tags$label(`for` = "GAR0041", "GAR0041")),
+                      
+                      ###################
+                      
+                      # Custom CSS for indentation
+                      tags$style(HTML("
                             .indent-1 {
                               margin-left: 20px; /* Indentation for certain items */
                             }
@@ -975,34 +1006,40 @@ ui <- fluidPage(
                               margin-bottom: 5px; /* Optional: Adds a bit of vertical spacing */
                             }
                           ")),
-                          
-                          # Balance Sheet Position will be dynamically updated based on selected VG
-                          # checkboxGroupInput("balance_sheet_filter", "Filter Balance Sheet Position:", 
-                          #                    choices = unique(data_cleaned$Balance_Sheet_Position),
-                          #                    selected = unique(data_cleaned$Balance_Sheet_Position))
-                        ),
-                        
-
-                        mainPanel(
-                          uiOutput("filtered_summary")  # Use uiOutput for the summary
-                        )
-                        
-                        
-                      )),
-          
-             ###################################################################
-                
-             # Second Tab: Data Table
-             tabPanel("Data", 
-                      DTOutput("filtered_data_table")),
-             
-             # Third Tab: Graphs (autogenerate depending on the dynamic input)
-             tabPanel("Graphs",
-                      uiOutput("plot_ui")
+                    ),
+                      
+                      mainPanel(
+                        uiOutput("filtered_summary")
                       )
-           )
-  )
-)
+                    )
+                  )
+                )
+              ),
+              
+              # Second Tab: Data
+              tabItem(tabName = "data",
+                      fluidRow(
+                        box(
+                          title = "Filtered Data Table", width = 12, status = "primary",
+                          DTOutput("filtered_data_table")
+                        )
+                      )
+              ),
+              
+              # Third Tab: Graphs
+              tabItem(tabName = "graphs",
+                      fluidRow(
+                        box(
+                          title = "", width = 12, status = "primary",
+                          uiOutput("plot_ui")
+                        )
+                      )
+              )
+      )
+    )
+  )     
+
+################################################################################
 
 # Server
 server <- function(input, output, session) {
@@ -1448,7 +1485,8 @@ server <- function(input, output, session) {
       select(Firm_ID, Period, VG, Balance_Sheet_Position, Value, `Asset Name`, `Liability Name`, Solvency_II_template, Year) %>%
       datatable(
         options = list(
-          autoWidth = TRUE  # Allow automatic width adjustment
+          autoWidth = TRUE,  # Allow automatic width adjustment
+          pageLength = 100    # Show 100 rows by default
         ),
         width = '75%', # Adjust to your preference (can also be fixed)
         style = 'bootstrap' # Use Bootstrap styling
@@ -1472,7 +1510,7 @@ server <- function(input, output, session) {
     # Create one plotOutput for each unique Balance_Sheet_Position
     plot_outputs <- lapply(positions, function(pos) {
       plotname <- paste0("plot_", pos)
-      plotOutput(outputId = plotname, height = "400px", width = "50%")
+      plotOutput(outputId = plotname, height = "400px", width = "100%")
     })
     
     # Return the list of plotOutput objects wrapped in a fluidRow for spacing
@@ -1514,7 +1552,7 @@ server <- function(input, output, session) {
           geom_line(size = 1.2) +  # Thicker lines for better visibility
           geom_point(size = 3, shape = 21, fill = "white", stroke = 1) +  # Larger points with a distinct outline
           labs(
-            title = paste("Firm:", unique(pos_data$Firm_ID), ":", name),
+            title = paste("Firm ", unique(pos_data$Firm_ID), "-", name),
             x = "",  # Add axis labels for clarity
             y = "", 
             color = ""  # Legend title
