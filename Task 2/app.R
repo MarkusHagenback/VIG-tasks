@@ -619,7 +619,7 @@ ui <- dashboardPage(
       tabItem(tabName = "filters",
               fluidRow(
                 box(
-                  title = "Filter Options", width = 12, solidHeader = TRUE, status = "primary",
+                  title = "Filter Options", width = 14, solidHeader = TRUE, status = "primary",
                   sidebarLayout(
                     sidebarPanel(
                       radioButtons("firm_filter", "Filter firm:", 
